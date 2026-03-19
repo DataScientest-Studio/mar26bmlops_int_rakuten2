@@ -100,3 +100,25 @@ target/
 
 # Mypy cache
 .mypy_cache/
+
+
+
+# mk _________________________________________________________
+# ignore virtual env
+venv/
+.venv/
+
+# ignore all data
+data/*
+
+# keep folder structure
+!data/raw/
+!data/processed/
+!data/external/
+!data/interim/
+
+# keep placeholder files
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+!data/interim/.gitkeep
