@@ -26,8 +26,6 @@ def run_pipeline(mode="full"):
 
     Args:
         mode: 'full', 'ingest', 'train', 'predict'
-        real: True = echte Rakuten-Daten, False = Mock-Daten
-        config_overrides: Dict mit Config-Ueberschreibungen
     """
     print("=" * 60)
     print("RAKUTEN COLOR EXTRACTION PIPELINE")
@@ -45,15 +43,15 @@ def run_pipeline(mode="full"):
     # ── 2. Splits ───────────────────────────────────────────
     print("\n[2/X] Train/Val/Pseudo-Test Split...")
     train_x, temp_x, train_y, temp_y = train_test_split(
-        df_x, df_y, test_size=0.2, random_state=False                   # to change later for training to 42!
+        df_x, df_y, test_size=0.2, random_state=42
     )
     val_x, pseudo_x, val_y, pseudo_y = train_test_split(
-        temp_x, temp_y, test_size=0.5, random_state=False               # to change later for training to 42!
+        temp_x, temp_y, test_size=0.5, random_state=42
     )
     print(f"  Train={len(train_x)}, Val={len(val_x)}, Pseudo={len(pseudo_x)}")
 
     # ── 3. DB filling ─────────────────────────────────────
-    if mode in ("full", "ingest"):
+    if mode == "full":
         print("\n[3/X] Datenbank befuellen...")
         init_db()
         ingest_products(train_x, train_y,   split="train")
@@ -65,9 +63,11 @@ def run_pipeline(mode="full"):
         print(f"  DB: {summary['products_by_split']}")
 
     if mode == "ingest":
-        print("\nReady (Ingest only).")
+        init_db()
+        ingest_products(df_x, df_y, split="train")
+        print("\nReady (Ingest x_train only).")
         return
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    run_pipeline(mode="full")

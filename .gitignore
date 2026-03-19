@@ -122,3 +122,27 @@ data/*
 !data/processed/.gitkeep
 !data/external/.gitkeep
 !data/interim/.gitkeep
+
+# ignore everything in data
+data/*
+
+# but keep folder structure
+!data/raw/
+!data/processed/
+!data/external/
+!data/interim/
+
+# ignore all files inside these folders
+data/raw/*
+data/processed/*
+data/external/*
+data/interim/*
+
+# but keep .gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+!data/interim/.gitkeep
+
+# DB folder
+db/
