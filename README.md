@@ -1,53 +1,92 @@
-Project Name
-==============================
+# Rakuten Product Color Classification - MLOps Project
 
-This project is a starting Pack for MLOps projects based on the subject "movie_recommandation". It's not perfect so feel free to make some modifications on it.
+This project is part of an MLOps course project.  
+The goal is to build a reproducible machine learning pipeline for **multi-label product color classification** based on Rakuten product data.
 
-Project Organization
-------------
+## Project Scope
+Phase 1 includes:
+- project setup and environment configuration
+- data loading and preprocessing
+- baseline model training
+- basic inference API
+
+## Project Organization
 
     ├── LICENSE
-    ├── README.md          <- The top-level README for developers using this project.
+    ├── README.md
     ├── data
-    │   ├── external       <- Data from third party sources.
-    │   ├── interim        <- Intermediate data that has been transformed.
-    │   ├── processed      <- The final, canonical data sets for modeling.
-    │   └── raw            <- The original, immutable data dump.
+    │   ├── external       <- Data from third party sources
+    │   ├── interim        <- Intermediate transformed data
+    │   ├── processed      <- Final processed datasets used for modeling
+    │   └── raw            <- Original raw input data
     │
-    ├── logs               <- Logs from training and predicting
+    ├── logs               <- Logs from training and prediction
     │
-    ├── models             <- Trained and serialized models, model predictions, or model summaries
+    ├── models             <- Trained and serialized models
     │
-    ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-    │                         the creator's initials, and a short `-` delimited description, e.g.
-    │                         `1.0-jqp-initial-data-exploration`.
+    ├── notebooks          <- Jupyter notebooks for exploration
     │
-    ├── references         <- Data dictionaries, manuals, and all other explanatory materials.
+    ├── references         <- Data dictionaries and project materials
     │
-    ├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-    │   └── figures        <- Generated graphics and figures to be used in reporting
+    ├── reports            <- Generated analyses and reports
+    │   └── figures        <- Generated graphics and figures
     │
-    ├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-    │                         generated with `pip freeze > requirements.txt`
+    ├── requirements.txt   <- Python dependencies
     │
-    ├── src                <- Source code for use in this project.
-    │   ├── __init__.py    <- Makes src a Python module
-    │   │
-    │   ├── data           <- Scripts to download or generate data
-    │   │   └── make_dataset.py
-    │   │
-    │   ├── features       <- Scripts to turn raw data into features for modeling
-    │   │   └── build_features.py
-    │   │
-    │   ├── models         <- Scripts to train models and then use trained models to make
-    │   │   │                 predictions
-    │   │   ├── predict_model.py
-    │   │   └── train_model.py
-    │   │
-    │   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
-    │   │   └── visualize.py
-    │   └── config         <- Describe the parameters used in train_model.py and predict_model.py
+    ├── src                <- Source code
+    │   ├── __init__.py
+    │   ├── data           <- Data loading and preprocessing scripts
+    │   │   └── load_data.py
+    │   ├── features       <- Feature engineering scripts
+    │   ├── models         <- Training and prediction scripts
+    │   ├── visualization  <- Visualization scripts
+    │   └── config         <- Configuration files
 
---------
+## Setup
 
-<p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
+Create and activate the virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+
+```
+## Install dependencies:
+```bash
+python -m pip install -r requirements.txt
+```
+## Run preprocessing
+```bash
+python src/data/load_data.py
+```
+## Current preprocessing steps
+
+- load X_train.csv, y_train.csv, and X_test.csv
+
+- drop auto-generated index columns if present
+
+- fill missing values in item_name and item_caption
+
+- combine text fields into combined_text
+
+- parse color_tags into Python lists
+
+- save processed files into data/processed/
+
+## Current dataset summary
+
+- training samples: 212,120
+
+- test samples: 37,347
+
+- number of unique color labels: 19
+
+- task type: multi-label classification
+
+## Next steps
+
+- build a baseline model using TF-IDF + Logistic Regression
+
+- implement training.py and predict.py
+
+- create a basic FastAPI inference service
