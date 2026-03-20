@@ -13,11 +13,14 @@ from sklearn.model_selection import train_test_split
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+
 from src.config import (
     COLOR_LABELS, DATA_DIR
 )
 
 from src.db import init_db, ingest_products, get_db_summary
+from src.models.train_model import train_xlm
+from src.config import XLM_CONFIG
 
 
 def run_pipeline(mode="full"):
@@ -51,7 +54,7 @@ def run_pipeline(mode="full"):
     print(f"  Train={len(train_x)}, Val={len(val_x)}, Pseudo={len(pseudo_x)}")
 
     # ── 3. DB filling ─────────────────────────────────────
-    if mode == "full":
+    if mode in ("full", "train"):
         print("\n[3/X] Datenbank befuellen...")
         init_db()
         ingest_products(train_x, train_y,   split="train")
@@ -67,6 +70,22 @@ def run_pipeline(mode="full"):
         ingest_products(df_x, df_y, split="train")
         print("\nReady (Ingest x_train only).")
         return
+    
+
+    # ── 4. Text-Modell train ────────────────────────────
+    if mode in ("full", "train"):
+        print("\n[4/8] XLM-RoBERTa Training...")
+        config = {**XLM_CONFIG}
+        # text_model, text_thresholds, text_run_id = train_xlm(
+        #     train_x, train_y, val_x, val_y, config
+        train_xlm(train_x.head(20), train_y.head(20),                           # mini
+          val_x.head(20), val_y.head(20),
+          config
+        )
+
+    if mode in ("train",):
+        print("\nReady (Training only).")
+        return text_model, text_thresholds, text_run_id
 
 
 if __name__ == "__main__":
