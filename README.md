@@ -42,7 +42,7 @@ Phase 1 includes:
     │   ├── visualization  <- Visualization scripts
     │   └── config         <- Configuration files
 
-## Setup
+## PHASE: 1 Setup
 
 Create and activate the virtual environment:
 
@@ -90,3 +90,27 @@ python src/data/load_data.py
 - implement training.py and predict.py
 
 - create a basic FastAPI inference service
+
+## Phase 2 Preparation
+- MLflow is prepared for experiment tracking
+
+- environment variables are defined in .env.example
+
+- API base entrypoint is src/api/main.py
+
+- raw and processed data must not be committed
+
+- development should happen on feature branches
+
+## Local setup
+```bash
+cp .env.example .env
+pip install -r requirements.txt
+uvicorn src.api.main:app --reload
+pytest
+```
+
+## Start MLflow
+```bash
+mlflow server --host 0.0.0.0 --port 5000
+```
