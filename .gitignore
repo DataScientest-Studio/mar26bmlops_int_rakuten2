@@ -147,3 +147,7 @@ data/interim/*
 # DB folder
 db/
 models/*.pt
+
+# models
+*.pkl
+models/*.pkl
