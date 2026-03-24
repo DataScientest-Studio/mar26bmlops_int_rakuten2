@@ -111,11 +111,11 @@ venv/
 # ignore all data
 data/*
 
-# keep folder structure
-!data/raw/
-!data/processed/
-!data/external/
-!data/interim/
+# data folders: keep structure, ignore contents
+data/raw/*
+data/processed/*
+data/external/*
+data/interim/*
 
 # keep placeholder files
 !data/raw/.gitkeep
