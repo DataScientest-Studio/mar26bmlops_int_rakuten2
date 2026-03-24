@@ -3,7 +3,6 @@ venv/
 .venv/
 
 # dotenv
-
 .env2
 .env3
 .env4
@@ -35,6 +34,7 @@ mlruns/
 # image data
 data/images/
 data/images_hidden/
+
 
 # data folders: keep structure, ignore contents
 data/raw/*
