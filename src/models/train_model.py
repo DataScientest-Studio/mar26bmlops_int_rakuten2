@@ -27,7 +27,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Dataset
 # ═══════════════════════════════════════════════════════════════
 class RakutenTextDataset(Dataset):
-    """Dataset fuer Text-basierte Color Classification."""
+    """Dataset for Color Classification, Text Based."""
 
     def __init__(self, df_x, df_y, tokenizer, max_len=256):
         self.df_x      = df_x.reset_index(drop=True)
@@ -54,7 +54,7 @@ class RakutenTextDataset(Dataset):
         labels = torch.zeros(NUM_LABELS)
         if self.df_y is not None:
             raw  = self.df_y.iloc[idx]['color_tags']
-            tags = ast.literal_eval(raw) if isinstance(raw, str) else raw
+            tags = ast.literal_eval(raw) if isinstance(raw, str) else raw        #correction of "["green, "blue"]"m the outer ""
             for tag in tags:
                 if tag in COLOR_LABELS:
                     labels[COLOR_LABELS.index(tag)] = 1.0
@@ -70,7 +70,7 @@ class RakutenTextDataset(Dataset):
 # Modell
 # ═══════════════════════════════════════════════════════════════
 class TextColorClassifier(nn.Module):
-    """XLM-RoBERTa + Linear Head fuer Multi-Label Classification."""
+    """XLM-RoBERTa + Linear Head for multi-Label Classification, Training"""
 
     def __init__(self, model_name, num_labels=NUM_LABELS, dropout=0.3):
         super().__init__()
@@ -196,13 +196,13 @@ def train_xlm(train_x, train_y, val_x, val_y, config=None):
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
             torch.save(model.state_dict(), best_model_path)
-            print(f"  -> Neues Best-Modell gespeichert (F1={val_f1:.4f})")
+            print(f"  -> New Best-Modell saved (F1={val_f1:.4f})")
 
             if mlflow_active:
                 import mlflow.pytorch
                 mlflow.pytorch.log_model(model, "model_best")
 
-    # ── Thresholds optimieren ──
+    # ── Thresholds optimization ── optional
     model.load_state_dict(torch.load(best_model_path, weights_only=True))
     _, val_probs = evaluate(model, val_dl)
     thresholds = optimize_thresholds(val_probs, val_y)
@@ -220,7 +220,7 @@ def train_xlm(train_x, train_y, val_x, val_y, config=None):
     except Exception:
         pass
 
-    print(f"\nTraining fertig! Best Val F1: {best_val_f1:.4f}")
+    print(f"\nTraining ready! Best Val F1: {best_val_f1:.4f}")
     return model, thresholds, run_id
 
 
@@ -228,7 +228,7 @@ def train_xlm(train_x, train_y, val_x, val_y, config=None):
 # Evaluation
 # ═══════════════════════════════════════════════════════════════
 def evaluate(model, dataloader):
-    """Gibt weighted-F1 und Probability-Matrix zurueck."""
+    """Returns weighted-F1 and probability-Matrix"""
     model.eval()
     all_probs, all_labels = [], []
 
@@ -251,7 +251,7 @@ def evaluate(model, dataloader):
 
 
 def get_text_probs(model, df_x, tokenizer, max_len=256, batch_size=64):
-    """Holt Probability-Scores fuer beliebigen DataFrame (z.B. Test-Set)."""
+    """Returns probability-scores for df (e.x. Test-Set)."""
     ds = RakutenTextDataset(df_x, df_y=None, tokenizer=tokenizer, max_len=max_len)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=False)
 

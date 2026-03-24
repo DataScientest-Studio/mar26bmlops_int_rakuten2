@@ -99,8 +99,8 @@ def run_pipeline(mode="full"):
     if mode in ("full", "train"):
         print("\n[3/X] Datenbank befüllen…")
         init_db()
-        ingest_products(train_x, train_y,   split="train")
-        ingest_products(val_x,   val_y,     split="val")
+        ingest_products(train_x.head(100), train_y.head(100),   split="train")
+        ingest_products(val_x.head(20),   val_y.head(20),     split="val")
         ingest_products(pseudo_x, pseudo_y, split="pseudo_test")
         ingest_products(df_test, df_y=None, split="test")
 
@@ -117,28 +117,28 @@ def run_pipeline(mode="full"):
 
         mini_config = {
             **XLM_CONFIG,
-            "epochs": 2,
-            "batch_size": 32,
+            "epochs": 1,
+            "batch_size": 8,
             "lr": 5e-5,
-            "max_len": 256
+            "max_len": 128
         }
 
         train_xlm(
-            train_x.head(5000), train_y.head(5000),
-            val_x.head(2000),    val_y.head(2000),
+            train_x.head(100), train_y.head(100),
+            val_x.head(20),    val_y.head(20),
             mini_config
         )
 
     # 5. REAL Inference (5 echte Samples)
-    if mode in ("full", "predict", "train", "predict"):
+    if mode in ("full", "predict", "train"):
         run_real_test_inference(df_test)
 
-    print("\nPipeline complete.\n")
+    print("\nPipeline fertig.\n")
 
 
 # ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    run_pipeline(mode="predict")
+    run_pipeline(mode="full")
 
 
 # 'output:'
