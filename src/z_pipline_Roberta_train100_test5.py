@@ -96,7 +96,7 @@ def run_pipeline(mode="full"):
     print(f"  Train={len(train_x)}, Val={len(val_x)}, Pseudo={len(pseudo_x)}")
 
     # 3. DB ingest
-    if mode in ("full", "train"):
+    if mode in ("full", "train", "predict"):
         print("\n[3/X] Datenbank befüllen…")
         init_db()
         ingest_products(train_x, train_y,   split="train")
@@ -131,7 +131,7 @@ def run_pipeline(mode="full"):
 
     # 5. REAL Inference (5 echte Samples)
     if mode in ("full", "predict", "train", "predict"):
-        run_real_test_inference(df_test)
+        run_real_test_inference(pseudo_x)
 
     print("\nPipeline complete.\n")
 
