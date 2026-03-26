@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.config import (
     COLOR_LABELS, DATA_DIR, XLM_CONFIG, ENSEMBLE_CONFIG, MLFLOW_EXPERIMENT
 )
-from src.db import init_db, ingest_products, get_db_summary, save_predictions
+from src.db import init_db, ingest_products, get_db_summary, save_predictions, clear_products
 from src.models.train_model import (
     train_xlm, evaluate, get_text_probs, optimize_thresholds,
     RakutenTextDataset, TextColorClassifier
@@ -68,7 +68,7 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
     if mode in ("full", "ingest"):
         print("\n[3/8] Datenbank befuellen...")
         init_db()
-
+        clear_products()
         if mission_mode:
             # Alle gelabelten Daten zum Training
             ingest_products(df_x,   df_y,    split="train")

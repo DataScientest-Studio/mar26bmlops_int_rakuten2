@@ -42,6 +42,15 @@ def init_db():
     print(f"  DB initialized ({SQLITE_PATH})")
 
 
+def clear_products():
+    """Alle Produkte und abhängige Daten löschen (für Re-Ingest)."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM predictions")
+        conn.execute("DELETE FROM labels")
+        conn.execute("DELETE FROM products")
+    print("  DB geleert (products, labels, predictions)")
+
+
 # -- Ingestion --------------------------------------------------------
 
 def ingest_products(df_x, df_y=None, split="train"):

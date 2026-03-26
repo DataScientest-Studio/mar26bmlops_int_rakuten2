@@ -59,6 +59,8 @@ ICE_CONFIG = {
     "max_len":         128,
     "image_dir":       DATA_DIR / "images",
     "db_train":        "train",
+    # "val", "pseudo_test", oder "test" für Challenge
+    "predict_split": "val",
     # Checkpoint-Dateien
     "checkpoint_path": MODEL_DIR / "color_model_best.pth",
     "mlb_path":        MODEL_DIR / "mlb.pkl",
