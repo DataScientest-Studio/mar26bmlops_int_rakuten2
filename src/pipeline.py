@@ -1,0 +1,154 @@
+"""
+Main pipeline: one call runs everything.
+
+Usage:
+    python -m src.pipeline --mode ingest              # DB ingest only (dev)
+    python -m src.pipeline --mode ingest --mission_mode  # DB ingest (all data)
+    python -m src.pipeline --mode train               # Training only
+    python -m src.pipeline --mode predict             # Prediction only
+    python -m src.pipeline --mode full                # Full run
+"""
+import argparse
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from sklearn.model_selection import train_test_split
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.config import (
+    COLOR_LABELS, DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
+)
+from src.db import init_db, ingest_products, get_db_summary, save_predictions, clear_products
+from src.models.train_model_ice_mk import train, generate_predictions
+from src.models.predict_model_ice_mk import predict
+
+
+def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=None):
+    """
+    Runs the full pipeline.
+
+    Args:
+        mode:             'full', 'ingest', 'train', 'predict'
+        real:             True = real Rakuten data, False = mock data
+        mission_mode:     True = use all training data (Rakuten Challenge)
+        config_overrides: Dict with config overrides
+    """
+    print("=" * 60)
+    print("RAKUTEN COLOR EXTRACTION PIPELINE")
+    print(f"  Mode: {mode} | Data: {'real' if real else 'mock'} | Mission: {mission_mode}")
+    print("=" * 60)
+
+    # -- 1. Load data --
+    print("\n[1/6] Loading data...")
+    df_x    = pd.read_csv(DATA_DIR / "raw" / "X_train.csv")
+    df_y    = pd.read_csv(DATA_DIR / "raw" / "y_train.csv")
+    df_test = pd.read_csv(DATA_DIR / "raw" / "X_test.csv")
+    print(f"  Train: {len(df_x)}, Test: {len(df_test)}")
+
+    # -- 2. Train/Val split (dev mode only) --
+    if not mission_mode:
+        print("\n[2/6] Train/Val split...")
+        train_x, val_x, train_y, val_y = train_test_split(
+            df_x, df_y, test_size=0.1, random_state=42
+        )
+        print(f"  Train={len(train_x)}, Val={len(val_x)}")
+    else:
+        print("\n[2/6] Mission mode — no split, all data used for training")
+
+    # -- 3. Fill database --
+    if mode in ("full", "ingest"):
+        print("\n[3/6] Filling database...")
+        init_db()
+        clear_products()
+        if mission_mode:
+            # All labeled data for training
+            ingest_products(df_x,    df_y,     split="train")
+            ingest_products(df_test, df_y=None, split="test")
+        else:
+            # Dev mode: 90/10 split
+            ingest_products(train_x, train_y, split="train")
+            ingest_products(val_x,   val_y,   split="val")
+            ingest_products(df_test, df_y=None, split="test")
+
+        summary = get_db_summary()
+        print(f"  DB: {summary['products_by_split']}")
+
+    import os
+    if os.getenv("USER") == "mirco":
+        import shutil
+        shutil.copy(
+            "/home/mirco/rakuten2/db/rakuten_colors.db",
+            "/mnt/c/02_Project_MLOPS/rakuten_colors.db"
+        )
+        print("DB Copy to local for Mirco only")
+
+    if mode == "ingest":
+        print("\nDone (ingest only).")
+        return
+
+    # -- 4. ICE DualEncoder training --
+    if mode in ("full", "train"):
+        print("\n[4/6] ICE DualEncoder training...")
+        config = {**ICE_CONFIG, **(config_overrides or {})}
+        classifier, dual_encoder, mlb, run_id = train(config=config)
+
+    if mode == "train":
+        print("\nDone (train only).")
+        return classifier, dual_encoder, mlb, run_id
+
+    # -- 5. Test set prediction --
+    if mode in ("full", "predict"):
+        print("\n[5/6] Predicting test set...")
+        out_path = DATA_DIR / "submissions" / "y_pred_test.csv"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        predict(split="test", out_path=str(out_path))
+
+    # -- 6. Submission --
+    print("\n[6/6] Creating submission...")
+    sub_path = DATA_DIR / "submissions" / "submission_ice_v1.csv"
+    results = pd.read_csv(out_path)
+    results.to_csv(sub_path, index=False)
+
+    try:
+        import mlflow
+        mlflow.set_experiment(MLFLOW_EXPERIMENT)
+        with mlflow.start_run(run_name="ice_dual_encoder_full"):
+            mlflow.log_param("mission_mode", mission_mode)
+            mlflow.log_artifact(str(sub_path))
+    except Exception:
+        pass
+
+    print("\n" + "=" * 60)
+    print("PIPELINE DONE!")
+    print(f"  Submission: {sub_path}")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Rakuten Color Pipeline")
+    parser.add_argument("--mode", default="ingest",                                                                         # mk Change here pipline mode for more then just DB creation! for now ingest only
+                        choices=["full", "ingest", "train", "predict"])
+    parser.add_argument("--real", action="store_true")
+    parser.add_argument("--mission_mode", action="store_true",                                                              # switch for  store_true -> split xtrain into 80 /10 val /10 pseudo_test mode 
+                        help="Mission mode: use all training data (Rakuten Challenge)")
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--lr",     type=float, default=None)
+    args = parser.parse_args()
+
+    overrides = {}
+    if args.epochs: overrides["max_epochs"] = args.epochs
+    if args.lr:     overrides["learning_rate"] = args.lr
+
+    run_pipeline(
+        mode=args.mode,
+        real=args.real,
+        mission_mode=args.mission_mode,
+        config_overrides=overrides
+    )
+
+
+
+# Space mk: Dev
+# cp /home/mirco/rakuten2/db/rakuten_colors.db /mnt/c/02_Project_MLOPS/ 
