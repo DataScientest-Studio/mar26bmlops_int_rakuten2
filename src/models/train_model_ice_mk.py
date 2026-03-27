@@ -38,7 +38,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.config import ICE_CONFIG, DATA_DIR, MODEL_DIR
 from src.db import get_split_data, get_products
 
-
+import mlflow
+import mlflow.pytorch
+from src.config import ICE_CONFIG, DATA_DIR, MODEL_DIR, MLFLOW_EXPERIMENT, MLFLOW_TRACKING_URI
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 torch.backends.cudnn.benchmark = True
 
@@ -361,114 +363,89 @@ def train(config=None):
     """
     cfg = {**ICE_CONFIG, **(config or {})}
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Device: {device}")
-    if device == "cuda":
-        print(f"  GPU: {torch.cuda.get_device_name(0)}")
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
 
-    use_amp = (device == "cuda")
-    amp_dtype = torch.bfloat16 if use_amp else torch.float32
+    with mlflow.start_run(run_name="ice_dual_encoder_train") as run:
+    
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Device: {device}")
+        if device == "cuda":
+            print(f"  GPU: {torch.cuda.get_device_name(0)}")
 
-    # -- Tokenizer, image processor, encoder --
-    tokenizer = AutoTokenizer.from_pretrained(cfg["text_model_id"])
-    image_processor = CLIPImageProcessor.from_pretrained(cfg["vision_model_id"])
+        use_amp = (device == "cuda")
+        amp_dtype = torch.bfloat16 if use_amp else torch.float32
 
-    dual_encoder = DualEncoder(cfg["text_model_id"], cfg["vision_model_id"]).to(device)
-    dual_encoder.unfreeze_encoder_layers(num_layers=cfg["unfreeze_layers"])
-    dual_encoder.train()
+        # -- Tokenizer, image processor, encoder --
+        tokenizer = AutoTokenizer.from_pretrained(cfg["text_model_id"])
+        image_processor = CLIPImageProcessor.from_pretrained(cfg["vision_model_id"])
 
-    # -- Data --
-    # x_path = DATA_DIR / "processed" / "X_train_processed.csv"                                       mk: 25.03.2026 exchanged trough SQL
-    # y_path = DATA_DIR / "processed" / "y_train_processed.csv"
-    X_tr, X_va, y_tr, y_va, mlb = prepare_split_data(ICE_CONFIG["db_train"])
-    print(f"  Train: {len(X_tr):,}  Val: {len(X_va):,}")
-
-    img_dir = cfg["image_dir"]
-    print("Validating training images...")
-    train_valid = build_valid_indices(X_tr.reset_index(drop=True), img_dir)
-    print("Validating validation images...")
-    val_valid = build_valid_indices(X_va.reset_index(drop=True), img_dir)
-
-    train_ds = MultimodalColorDataset(X_tr, y_tr, img_dir, tokenizer, image_processor, train_valid)
-    val_ds = MultimodalColorDataset(X_va, y_va, img_dir, tokenizer, image_processor, val_valid)
-
-    num_workers = min(6, os.cpu_count() or 1)
-    train_dl = DataLoader(
-        train_ds, batch_size=cfg["batch_size"], shuffle=True,
-        num_workers=num_workers, pin_memory=True,
-        persistent_workers=True, prefetch_factor=2,
-    )
-    val_dl = DataLoader(
-        val_ds, batch_size=cfg["batch_size"], shuffle=False,
-        num_workers=num_workers, pin_memory=True,
-        persistent_workers=True, prefetch_factor=2,
-    )
-
-    # -- Classifier, loss, optimizer, scheduler --
-    num_classes = len(mlb.classes_)
-    classifier = ColorClassifier(input_dim=1536, num_colors=num_classes).to(device)
-
-    label_counts = y_tr.sum(axis=0).astype(float)
-    neg_counts = len(y_tr) - label_counts
-    pos_weights = torch.tensor(
-        np.clip(neg_counts / (label_counts + 1e-6), 1.0, 10.0), dtype=torch.float32
-    ).to(device)
-    loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weights)
-
-    encoder_params = [p for p in dual_encoder.parameters() if p.requires_grad]
-    optimizer = torch.optim.Adam([
-        {"params": classifier.parameters(), "lr": cfg["learning_rate"]},
-        {"params": encoder_params, "lr": cfg["encoder_lr"]},
-    ])
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-6,
-    )
-    early_stopping = EarlyStopping(patience=cfg["es_patience"])
-
-    # -- Training loop --
-    max_epochs = cfg["max_epochs"]
-    print(f"\nTraining ICE (max {max_epochs} epochs, batch={cfg['batch_size']}, amp=BF16)\n")
-
-    for epoch in range(max_epochs):
-        # Train
-        classifier.train()
+        dual_encoder = DualEncoder(cfg["text_model_id"], cfg["vision_model_id"]).to(device)
+        dual_encoder.unfreeze_encoder_layers(num_layers=cfg["unfreeze_layers"])
         dual_encoder.train()
-        all_preds, all_labels = [], []
-        t_loss = 0.0
 
-        for batch in tqdm(train_dl, desc=f"Epoch {epoch+1}/{max_epochs} [Train]"):
-            optimizer.zero_grad(set_to_none=True)
+        # -- Data --
+        # x_path = DATA_DIR / "processed" / "X_train_processed.csv"                                       mk: 25.03.2026 exchanged trough SQL
+        # y_path = DATA_DIR / "processed" / "y_train_processed.csv"
+        X_tr, X_va, y_tr, y_va, mlb = prepare_split_data(ICE_CONFIG["db_train"])
+        print(f"  Train: {len(X_tr):,}  Val: {len(X_va):,}")
 
-            px = batch["pixel_values"].to(device, non_blocking=True)
-            ids = batch["input_ids"].to(device, non_blocking=True)
-            mask = batch["attention_mask"].to(device, non_blocking=True)
-            target = batch["label"].to(device, non_blocking=True)
+        img_dir = cfg["image_dir"]
+        print("Validating training images...")
+        train_valid = build_valid_indices(X_tr.reset_index(drop=True), img_dir)
+        print("Validating validation images...")
+        val_valid = build_valid_indices(X_va.reset_index(drop=True), img_dir)
 
-            with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                img_e = dual_encoder.get_image_features(px)
-                txt_e = dual_encoder.get_text_features(ids, mask)
-                logits = classifier(img_e, txt_e)
-                loss = loss_fn(logits, target)
+        train_ds = MultimodalColorDataset(X_tr, y_tr, img_dir, tokenizer, image_processor, train_valid)
+        val_ds = MultimodalColorDataset(X_va, y_va, img_dir, tokenizer, image_processor, val_valid)
 
-            loss.backward()
-            optimizer.step()
+        num_workers = min(6, os.cpu_count() or 1)
+        train_dl = DataLoader(
+            train_ds, batch_size=cfg["batch_size"], shuffle=True,
+            num_workers=num_workers, pin_memory=True,
+            persistent_workers=True, prefetch_factor=2,
+        )
+        val_dl = DataLoader(
+            val_ds, batch_size=cfg["batch_size"], shuffle=False,
+            num_workers=num_workers, pin_memory=True,
+            persistent_workers=True, prefetch_factor=2,
+        )
 
-            preds = (torch.sigmoid(logits.float()) > cfg["train_threshold"]).int().cpu().numpy()
-            all_preds.append(preds)
-            all_labels.append(target.cpu().numpy())
-            t_loss += loss.item()
+        # -- Classifier, loss, optimizer, scheduler --
+        num_classes = len(mlb.classes_)
+        classifier = ColorClassifier(input_dim=1536, num_colors=num_classes).to(device)
 
-        train_f1 = f1_score(np.vstack(all_labels), np.vstack(all_preds),
-                            average="micro", zero_division=0)
+        label_counts = y_tr.sum(axis=0).astype(float)
+        neg_counts = len(y_tr) - label_counts
+        pos_weights = torch.tensor(
+            np.clip(neg_counts / (label_counts + 1e-6), 1.0, 10.0), dtype=torch.float32
+        ).to(device)
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weights)
 
-        # Validation
-        classifier.eval()
-        dual_encoder.eval()
-        val_preds, val_labels = [], []
-        v_loss = 0.0
+        encoder_params = [p for p in dual_encoder.parameters() if p.requires_grad]
+        optimizer = torch.optim.Adam([
+            {"params": classifier.parameters(), "lr": cfg["learning_rate"]},
+            {"params": encoder_params, "lr": cfg["encoder_lr"]},
+        ])
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-6,
+        )
+        early_stopping = EarlyStopping(patience=cfg["es_patience"])
 
-        with torch.no_grad():
-            for batch in tqdm(val_dl, desc=f"Epoch {epoch+1}/{max_epochs} [Val]"):
+        # -- Training loop --
+        max_epochs = cfg["max_epochs"]
+        print(f"\nTraining ICE (max {max_epochs} epochs, batch={cfg['batch_size']}, amp=BF16)\n")
+
+        for epoch in range(max_epochs):
+            # Train
+            classifier.train()
+            dual_encoder.train()
+            all_preds, all_labels = [], []
+            t_loss = 0.0
+
+            for batch in tqdm(train_dl, desc=f"Epoch {epoch+1}/{max_epochs} [Train]"):
+                optimizer.zero_grad(set_to_none=True)
+
                 px = batch["pixel_values"].to(device, non_blocking=True)
                 ids = batch["input_ids"].to(device, non_blocking=True)
                 mask = batch["attention_mask"].to(device, non_blocking=True)
@@ -478,54 +455,84 @@ def train(config=None):
                     img_e = dual_encoder.get_image_features(px)
                     txt_e = dual_encoder.get_text_features(ids, mask)
                     logits = classifier(img_e, txt_e)
-                v_loss += loss_fn(logits, target).item()
+                    loss = loss_fn(logits, target)
 
-                preds = (torch.sigmoid(logits.float()) > cfg["val_threshold"]).int().cpu().numpy()
-                val_preds.append(preds)
-                val_labels.append(target.cpu().numpy())
+                loss.backward()
+                optimizer.step()
 
-        avg_val_loss = v_loss / len(val_dl)
-        val_f1 = f1_score(np.vstack(val_labels), np.vstack(val_preds),
-                          average="micro", zero_division=0)
+                preds = (torch.sigmoid(logits.float()) > cfg["train_threshold"]).int().cpu().numpy()
+                all_preds.append(preds)
+                all_labels.append(target.cpu().numpy())
+                t_loss += loss.item()
 
-        print(f"\n  Epoch {epoch+1}: train_loss={t_loss/len(train_dl):.4f} "
-              f"train_f1={train_f1:.4f} | val_loss={avg_val_loss:.4f} val_f1={val_f1:.4f}")
+            train_f1 = f1_score(np.vstack(all_labels), np.vstack(all_preds),
+                                average="micro", zero_division=0)
 
-        scheduler.step(avg_val_loss)
+            # Validation
+            classifier.eval()
+            dual_encoder.eval()
+            val_preds, val_labels = [], []
+            v_loss = 0.0
 
-        # Save epoch checkpoint
-        ckpt_path = MODEL_DIR / f"color_model_ep{epoch+1}.pth"
+            with torch.no_grad():
+                for batch in tqdm(val_dl, desc=f"Epoch {epoch+1}/{max_epochs} [Val]"):
+                    px = batch["pixel_values"].to(device, non_blocking=True)
+                    ids = batch["input_ids"].to(device, non_blocking=True)
+                    mask = batch["attention_mask"].to(device, non_blocking=True)
+                    target = batch["label"].to(device, non_blocking=True)
+
+                    with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
+                        img_e = dual_encoder.get_image_features(px)
+                        txt_e = dual_encoder.get_text_features(ids, mask)
+                        logits = classifier(img_e, txt_e)
+                    v_loss += loss_fn(logits, target).item()
+
+                    preds = (torch.sigmoid(logits.float()) > cfg["val_threshold"]).int().cpu().numpy()
+                    val_preds.append(preds)
+                    val_labels.append(target.cpu().numpy())
+
+            avg_val_loss = v_loss / len(val_dl)
+            val_f1 = f1_score(np.vstack(val_labels), np.vstack(val_preds),
+                            average="micro", zero_division=0)
+
+            print(f"\n  Epoch {epoch+1}: train_loss={t_loss/len(train_dl):.4f} "
+                f"train_f1={train_f1:.4f} | val_loss={avg_val_loss:.4f} val_f1={val_f1:.4f}")
+
+            scheduler.step(avg_val_loss)
+
+            # Save epoch checkpoint
+            ckpt_path = MODEL_DIR / f"color_model_ep{epoch+1}.pth"
+            torch.save({"classifier": classifier.state_dict(),
+                        "dual_encoder": dual_encoder.state_dict()}, ckpt_path)
+
+            if early_stopping(val_f1, classifier, encoder=dual_encoder):
+                break
+
+        # -- Save best model --
+        early_stopping.restore_best_weights(classifier, encoder=dual_encoder)
+        best_path = ICE_CONFIG["checkpoint_path"]
         torch.save({"classifier": classifier.state_dict(),
-                     "dual_encoder": dual_encoder.state_dict()}, ckpt_path)
+                    "dual_encoder": dual_encoder.state_dict()}, best_path)
+        print(f"\n  Best model saved to {best_path}")
 
-        if early_stopping(val_f1, classifier, encoder=dual_encoder):
-            break
+        # -- Save run to DB --
+        run_id = run.info.run_id
+        try:
+            from src.db import save_run
+            save_run(run_id, "ice_dual_encoder", early_stopping.best_score, cfg)
+        except Exception:
+            pass
 
-    # -- Save best model --
-    early_stopping.restore_best_weights(classifier, encoder=dual_encoder)
-    best_path = ICE_CONFIG["checkpoint_path"]
-    torch.save({"classifier": classifier.state_dict(),
-                "dual_encoder": dual_encoder.state_dict()}, best_path)
-    print(f"\n  Best model saved to {best_path}")
+        # -- Generate validation predictions --
+        generate_predictions(
+            classifier=classifier, dual_encoder=dual_encoder,
+            df_x=X_va, img_dir=img_dir, tokenizer=tokenizer,
+            image_processor=image_processor, mlb=mlb, device=device,
+            threshold=cfg["val_threshold"],
+            out_path=MODEL_DIR / "y_pred_training.csv",
+        )
 
-    # -- Save run to DB --
-    run_id = f"ice_{np.random.randint(10000, 99999)}"
-    try:
-        from src.db import save_run
-        save_run(run_id, "ice_dual_encoder", early_stopping.best_score, cfg)
-    except Exception:
-        pass
-
-    # -- Generate validation predictions --
-    generate_predictions(
-        classifier=classifier, dual_encoder=dual_encoder,
-        df_x=X_va, img_dir=img_dir, tokenizer=tokenizer,
-        image_processor=image_processor, mlb=mlb, device=device,
-        threshold=cfg["val_threshold"],
-        out_path=MODEL_DIR / "y_pred_training.csv",
-    )
-
-    return classifier, dual_encoder, mlb, run_id
+        return classifier, dual_encoder, mlb, run_id
 
 
 # -- CLI ---------------------------------------------------------------
