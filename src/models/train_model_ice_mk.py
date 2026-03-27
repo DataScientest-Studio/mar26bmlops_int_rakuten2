@@ -491,11 +491,15 @@ def train(config=None):
                     val_preds.append(preds)
                     val_labels.append(target.cpu().numpy())
 
+            stacked_labels = np.vstack(val_labels)                      # mk: 27.03.2026 puted the viables in macro and micro
+            stacked_preds  = np.vstack(val_preds)                        
+
             avg_val_loss = v_loss / len(val_dl)
-            val_f1 = f1_score(np.vstack(val_labels), np.vstack(val_preds),
+            val_f1 = f1_score(stacked_labels, stacked_preds,
                             average="micro", zero_division=0)
-            micro_f1 = f1_score(..., average="micro")
-            macro_f1 = f1_score(..., average="macro")
+            micro_f1 = val_f1
+            macro_f1 = f1_score(stacked_labels, stacked_preds,
+                            average="macro", zero_division=0)
 
             mlflow.log_metric("f1_micro", micro_f1)
             mlflow.log_metric("f1_macro", macro_f1)
