@@ -494,7 +494,12 @@ def train(config=None):
             avg_val_loss = v_loss / len(val_dl)
             val_f1 = f1_score(np.vstack(val_labels), np.vstack(val_preds),
                             average="micro", zero_division=0)
+            micro_f1 = f1_score(..., average="micro")
+            macro_f1 = f1_score(..., average="macro")
 
+            mlflow.log_metric("f1_micro", micro_f1)
+            mlflow.log_metric("f1_macro", macro_f1)
+            
             print(f"\n  Epoch {epoch+1}: train_loss={t_loss/len(train_dl):.4f} "
                 f"train_f1={train_f1:.4f} | val_loss={avg_val_loss:.4f} val_f1={val_f1:.4f}")
 
