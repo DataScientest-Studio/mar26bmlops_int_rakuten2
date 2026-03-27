@@ -1,5 +1,5 @@
 """
-Zentrale Konfiguration fuer das Rakuten Color Extraction Projekt.
+Central config for Rakuten Color Extraction Project
 """
 from pathlib import Path
 

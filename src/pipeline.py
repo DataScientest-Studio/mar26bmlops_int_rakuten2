@@ -82,10 +82,21 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
 
         summary = get_db_summary()
         print(f"  DB: {summary['products_by_split']}")
+    
+        # DB Copy to local for Mirco
+    import os
+    if os.getenv("USER") == "mirco":
+        import shutil
+        shutil.copy(
+            "/home/mirco/rakuten2/db/rakuten_colors.db",
+            "/mnt/c/02_Project_MLOPS/rakuten_colors.db"
+        )
+        print("DB Copy to local for Mirco only")
 
     if mode == "ingest":
         print("\nFertig (nur Ingest).")
         return
+
 
     # ── 4. Text-Modell trainieren ────────────────────────────
     if mode in ("full", "train"):
@@ -163,8 +174,8 @@ if __name__ == "__main__":
     parser.add_argument("--mode", default="ingest",
                         choices=["full", "ingest", "train", "predict"])
     parser.add_argument("--real", action="store_true")
-    parser.add_argument("--mission_mode", action="store_true",
-                        help="Mission mode: alle Trainingsdaten nutzen (Rakuten Challenge)")
+    parser.add_argument("--mission_mode", action="store_true",                                                          # parameter
+                        help="Mission mode: Uses all Traindata (Rakuten Challenge)")                        
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     args = parser.parse_args()
@@ -179,3 +190,9 @@ if __name__ == "__main__":
         mission_mode=args.mission_mode,
         config_overrides=overrides
     )
+
+
+
+
+# Space mk: Dev
+# cp /home/mirco/rakuten2/db/rakuten_colors.db /mnt/c/02_Project_MLOPS/ 
