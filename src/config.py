@@ -2,6 +2,7 @@
 Central config for Rakuten Color Extraction Project
 """
 from pathlib import Path
+import os
 
 # ── Pfade ──────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ NUM_LABELS = len(COLOR_LABELS)
 XLM_CONFIG = {
     "model_name":        "xlm-roberta-base",
     "lr":                2e-5,
-    "epochs":            3,
+    "epochs":            15,
     "batch_size":        32,
     "max_len":           256,
     "dropout":           0.3,
@@ -51,9 +52,9 @@ ICE_CONFIG = {
     "batch_size":      128,
     "learning_rate":   3e-3,
     "encoder_lr":      2e-5,
-    "max_epochs":      1,
+    "max_epochs":      15,
     "unfreeze_layers": 2,
-    "es_patience":     5,
+    "es_patience":     3,
     "val_threshold":   0.5,
     "train_threshold": 0.5,
     "max_len":         128,
@@ -74,4 +75,4 @@ ENSEMBLE_CONFIG = {
 
 # ── MLflow ─────────────────────────────────────────────────────
 MLFLOW_EXPERIMENT = "rakuten_color_extraction"
-MLFLOW_TRACKING_URI = "http://localhost:5000"
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")

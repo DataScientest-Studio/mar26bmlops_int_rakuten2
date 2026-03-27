@@ -1,6 +1,20 @@
 version: "3.9"
 
 services:
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+    volumes:
+      - ./mlflow:/mlflow
+
   api:
     build: .
     container_name: rakuten_api
@@ -8,12 +22,22 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
     depends_on:
       - mlflow
 
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.11.3
-    container_name: rakuten_mlflow
-    ports:
-      - "5000:5000"
-    command: mlflow server --host 0.0.0.0 --port 5000
+  training:
+    build:
+      context: .
+      dockerfile: Dockerfile.training
+    container_name: training
+    depends_on:
+      - mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./db:/app/db
+    command: python -m src.models.train_model_ice_mk
