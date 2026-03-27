@@ -22,7 +22,7 @@ from src.config import (
 )
 
 from src.db import init_db, ingest_products, get_db_summary
-from src.models.train_model import train_xlm, TextColorClassifier
+from src.models.Archiv_mk.train_model import train_xlm, TextColorClassifier
 
 
 # ───────────────────────────────────────────────────────────────

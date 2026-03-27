@@ -31,7 +31,7 @@ class ModelService:
         if xlm_path.exists():
             try:
                 import torch
-                from src.models.train_model import TextColorClassifier
+                from src.models.Archiv_mk.train_model import TextColorClassifier
                 from src.config import XLM_CONFIG
                 from transformers import AutoTokenizer
 
