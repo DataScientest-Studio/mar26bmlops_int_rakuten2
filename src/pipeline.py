@@ -44,7 +44,7 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
     print(f"  Mode: {mode} | Daten: {'real' if real else 'mock'} | Mission: {mission_mode}")
     print("=" * 60)
 
-    # ── 1. Daten laden ──────────────────────────────────────
+    # ── 1. data read ──────────────────────────────────────
     print("\n[1/8] Daten laden...")
     df_x    = pd.read_csv(DATA_DIR / "raw" / "X_train.csv")
     df_y    = pd.read_csv(DATA_DIR / "raw" / "y_train.csv")
