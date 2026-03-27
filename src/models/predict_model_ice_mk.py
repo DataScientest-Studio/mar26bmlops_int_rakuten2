@@ -195,7 +195,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int,   default=None)
     parser.add_argument("--output",     type=str,   default=None)
     parser.add_argument("--split",      type=str,   default=None,
-                        help="val | pseudo_test | test (default: val)")
+                        help="val | pseudo_test | test (default: val)")                        # switch that for testing, corresponding for the db ingest mission mode!
     args = parser.parse_args()
 
     predict(

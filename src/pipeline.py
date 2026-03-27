@@ -131,7 +131,7 @@ if __name__ == "__main__":
     parser.add_argument("--mode", default="ingest",                                                                         # mk Change here pipline mode for more then just DB creation! for now ingest only
                         choices=["full", "ingest", "train", "predict"])
     parser.add_argument("--real", action="store_true")
-    parser.add_argument("--mission_mode", action="store_true",
+    parser.add_argument("--mission_mode", action="store_true",                                                              # switch for  store_true -> split xtrain into 80 /10 val /10 pseudo_test mode 
                         help="Mission mode: use all training data (Rakuten Challenge)")
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--lr",     type=float, default=None)
@@ -147,3 +147,8 @@ if __name__ == "__main__":
         mission_mode=args.mission_mode,
         config_overrides=overrides
     )
+
+
+
+# Space mk: Dev
+# cp /home/mirco/rakuten2/db/rakuten_colors.db /mnt/c/02_Project_MLOPS/ 
