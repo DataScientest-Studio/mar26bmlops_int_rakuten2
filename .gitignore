@@ -43,3 +43,8 @@ data/interim/*
 !data/processed/.gitkeep
 !data/external/.gitkeep
 !data/interim/.gitkeep
+
+# models
+models/
+.pth
+.pth
