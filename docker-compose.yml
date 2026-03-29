@@ -1,10 +1,11 @@
-
 services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     container_name: mlflow
     ports:
       - "5000:5000"
+    environment:
+      MLFLOW_SERVER_ALLOWED_HOSTS: "localhost:5000,localhost,127.0.0.1:5000,127.0.0.1,mlflow:5000,mlflow"
     command: >
       mlflow server
       --backend-store-uri sqlite:///mlflow.db
@@ -14,7 +15,7 @@ services:
     volumes:
       - ./mlflow:/mlflow
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; req=urllib.request.Request('http://localhost:5000', headers={'Host':'localhost:5000'}); urllib.request.urlopen(req).read()"]
       interval: 15s
       timeout: 10s
       retries: 10
