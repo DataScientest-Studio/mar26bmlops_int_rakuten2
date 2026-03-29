@@ -8,8 +8,8 @@ Architecture:
     Head:   concat(768,768) -> 1024 -> 512 -> num_colors (MLP)
 
 Usage:
-    python -m src.models.train_model_ice
-    python -m src.models.train_model_ice --epochs 10 --batch_size 64
+    python -m src.models.train_model_ice_mk
+    python -m src.models.train_model_ice_mk --epochs 10 --batch_size 64
 """
 
 import os
@@ -112,11 +112,21 @@ def get_version_by_alias(client: MlflowClient, model_name: str, alias: str):
         return None
 
 
-def set_registered_model_alias(client: MlflowClient, model_name: str, alias: str, version: str) -> None:
+def set_registered_model_alias(
+    client: MlflowClient,
+    model_name: str,
+    alias: str,
+    version: str,
+) -> None:
     client.set_registered_model_alias(model_name, alias, version)
 
 
-def set_model_version_tags(client: MlflowClient, model_name: str, version: str, tags: dict) -> None:
+def set_model_version_tags(
+    client: MlflowClient,
+    model_name: str,
+    version: str,
+    tags: dict,
+) -> None:
     for key, value in tags.items():
         client.set_model_version_tag(model_name, version, key, str(value))
 
@@ -164,7 +174,6 @@ class DualEncoder(nn.Module):
         return out.pooler_output  # (B, 768)
 
     def unfreeze_encoder_layers(self, num_layers: int = 2):
-        """Unfreeze the last N layers of both encoders for fine-tuning."""
         for layer in self.text_encoder.encoder.layer[-num_layers:]:
             for p in layer.parameters():
                 p.requires_grad = True
@@ -240,12 +249,14 @@ class EarlyStopping:
         self.counter = 0
         self.best_score = float("-inf")
         self.best_weights = None
+        self.best_epoch = 0
 
-    def __call__(self, score, model):
+    def __call__(self, score, model, epoch_idx: int):
         if score > self.best_score + self.min_delta:
             self.best_score = score
             self.counter = 0
             self.best_weights = copy.deepcopy(model.state_dict())
+            self.best_epoch = epoch_idx
             print(f"  [ES] Val micro-F1 improved to {score:.6f}")
         else:
             self.counter += 1
@@ -261,7 +272,10 @@ class EarlyStopping:
     def restore_best_weights(self, model):
         if self.best_weights is not None:
             model.load_state_dict(self.best_weights)
-            print(f"  [ES] Best weights restored (F1={self.best_score:.6f})")
+            print(
+                f"  [ES] Best weights restored "
+                f"(F1={self.best_score:.6f}, epoch={self.best_epoch})"
+            )
 
 
 # ============================================================
@@ -286,12 +300,22 @@ def load_image_as_rgb_array(path: str) -> np.ndarray:
 class MultimodalColorDataset(Dataset):
     """Dataset that returns tokenized text + processed image + label."""
 
-    def __init__(self, dataframe, encoded_labels, img_dir, tokenizer, image_processor, valid_indices=None):
+    def __init__(
+        self,
+        dataframe,
+        encoded_labels,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len,
+        valid_indices=None,
+    ):
         self.df = dataframe.reset_index(drop=True)
         self.encoded_labels = encoded_labels
         self.img_dir = str(img_dir).rstrip("/")
         self.tokenizer = tokenizer
         self.image_processor = image_processor
+        self.max_len = max_len
         self.valid_indices = valid_indices or list(range(len(self.df)))
 
     def __len__(self):
@@ -312,7 +336,7 @@ class MultimodalColorDataset(Dataset):
             text,
             return_tensors="pt",
             padding="max_length",
-            max_length=ICE_CONFIG["max_len"],
+            max_length=self.max_len,
             truncation=True,
         )
         img_enc = self.image_processor(
@@ -332,11 +356,20 @@ class MultimodalColorDataset(Dataset):
 class InferenceDataset(Dataset):
     """Dataset for inference — no labels, returns row_index."""
 
-    def __init__(self, dataframe, img_dir, tokenizer, image_processor, valid_indices):
+    def __init__(
+        self,
+        dataframe,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len,
+        valid_indices,
+    ):
         self.df = dataframe.reset_index(drop=True)
         self.img_dir = str(img_dir).rstrip("/")
         self.tokenizer = tokenizer
         self.image_processor = image_processor
+        self.max_len = max_len
         self.valid_indices = valid_indices
 
     def __len__(self):
@@ -357,7 +390,7 @@ class InferenceDataset(Dataset):
             text,
             return_tensors="pt",
             padding="max_length",
-            max_length=ICE_CONFIG["max_len"],
+            max_length=self.max_len,
             truncation=True,
         )
         img_enc = self.image_processor(
@@ -397,7 +430,7 @@ def build_valid_indices(df, img_dir):
     return valid
 
 
-def prepare_split_data(split="train", val_ratio=0.1):
+def prepare_split_data(split="train", val_ratio=0.1, mlb_path=None):
     """Load DB data, parse labels, split, fit binarizer."""
     df_x, df_y = get_split_data(split=split)
 
@@ -415,8 +448,8 @@ def prepare_split_data(split="train", val_ratio=0.1):
     y_train_vec = mlb.fit_transform(y_tags_train)
     y_val_vec = mlb.transform(y_tags_val)
 
-    mlb_path = ICE_CONFIG["mlb_path"]
-    with open(mlb_path, "wb") as f:
+    final_mlb_path = mlb_path or ICE_CONFIG["mlb_path"]
+    with open(final_mlb_path, "wb") as f:
         pickle.dump(mlb, f)
 
     print(f"  Label classes ({len(mlb.classes_)}): {list(mlb.classes_)}")
@@ -466,18 +499,38 @@ def evaluate_model(model, dataloader, loss_fn, device, threshold=0.5):
     }
 
 
-def generate_predictions(model, df_x, img_dir, tokenizer, image_processor, mlb, device,
-                         threshold=0.3, min_preds=1, out_path=None):
+def generate_predictions(
+    model,
+    df_x,
+    img_dir,
+    tokenizer,
+    image_processor,
+    mlb,
+    device,
+    batch_size,
+    max_len,
+    threshold=0.3,
+    min_preds=1,
+    out_path=None,
+):
     """Run inference on a dataframe and save predictions CSV."""
     model.eval()
     df_reset = df_x.reset_index(drop=True)
     valid_idx = build_valid_indices(df_reset, img_dir)
 
-    infer_ds = InferenceDataset(df_reset, img_dir, tokenizer, image_processor, valid_idx)
+    infer_ds = InferenceDataset(
+        df_reset,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len=max_len,
+        valid_indices=valid_idx,
+    )
+
     num_workers = min(4, os.cpu_count() or 1)
     infer_loader = DataLoader(
         infer_ds,
-        batch_size=ICE_CONFIG["batch_size"],
+        batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
         pin_memory=(device == "cuda"),
@@ -557,14 +610,13 @@ def train(config=None):
     use_amp = device == "cuda"
     amp_dtype = torch.bfloat16 if use_amp else torch.float32
 
-    # -- Tokenizer, image processor, encoder --
     tokenizer = AutoTokenizer.from_pretrained(cfg["text_model_id"])
     image_processor = CLIPImageProcessor.from_pretrained(cfg["vision_model_id"])
 
-    # -- Data --
     X_tr, X_va, y_tr, y_va, mlb = prepare_split_data(
         split=cfg["db_train"],
         val_ratio=float(cfg["val_ratio"]),
+        mlb_path=cfg["mlb_path"],
     )
     print(f"  Train: {len(X_tr):,}  Val: {len(X_va):,}")
 
@@ -574,8 +626,24 @@ def train(config=None):
     print("Validating validation images...")
     val_valid = build_valid_indices(X_va.reset_index(drop=True), img_dir)
 
-    train_ds = MultimodalColorDataset(X_tr, y_tr, img_dir, tokenizer, image_processor, train_valid)
-    val_ds = MultimodalColorDataset(X_va, y_va, img_dir, tokenizer, image_processor, val_valid)
+    train_ds = MultimodalColorDataset(
+        X_tr,
+        y_tr,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len=cfg["max_len"],
+        valid_indices=train_valid,
+    )
+    val_ds = MultimodalColorDataset(
+        X_va,
+        y_va,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len=cfg["max_len"],
+        valid_indices=val_valid,
+    )
 
     num_workers = min(4, os.cpu_count() or 1)
     train_dl = DataLoader(
@@ -595,7 +663,6 @@ def train(config=None):
         persistent_workers=(num_workers > 0),
     )
 
-    # -- Build model --
     dual_encoder = DualEncoder(cfg["text_model_id"], cfg["vision_model_id"]).to(device)
     dual_encoder.unfreeze_encoder_layers(num_layers=cfg["unfreeze_layers"])
 
@@ -603,7 +670,6 @@ def train(config=None):
     classifier = ColorClassifier(input_dim=1536, num_colors=num_classes).to(device)
     model = ICEModel(dual_encoder, classifier).to(device)
 
-    # -- Loss / optimizer --
     label_counts = y_tr.sum(axis=0).astype(float)
     neg_counts = len(y_tr) - label_counts
     pos_weight_values = np.clip(neg_counts / (label_counts + 1e-6), 1.0, 10.0)
@@ -625,7 +691,6 @@ def train(config=None):
     )
     early_stopping = EarlyStopping(patience=cfg["es_patience"])
 
-    # -- Metadata / manifest --
     data_manifest = {
         "train_rows": int(len(X_tr)),
         "val_rows": int(len(X_va)),
@@ -654,9 +719,6 @@ def train(config=None):
     with mlflow.start_run(run_name="ice_dual_encoder_train") as run:
         run_id = run.info.run_id
 
-        # -------------------------
-        # Track parameters / tags
-        # -------------------------
         mlflow.log_params(cfg_clean)
         mlflow.set_tags({
             "model_family": "ICE DualEncoder",
@@ -666,9 +728,9 @@ def train(config=None):
             "dataset_version": data_manifest["dataset_version"],
             "device": device,
             "amp_enabled": str(use_amp),
+            "previous_champion_exists": str(champion_version is not None),
         })
 
-        # Useful metadata artifacts
         log_json_artifact("data_manifest.json", data_manifest, artifact_path="metadata")
         log_json_artifact(
             "training_environment.json",
@@ -700,9 +762,8 @@ def train(config=None):
             f"(max_epochs={cfg['max_epochs']}, batch={cfg['batch_size']}, amp={'BF16' if use_amp else 'OFF'})\n"
         )
 
-        # -------------------------
-        # Training loop
-        # -------------------------
+        epochs_completed = 0
+
         for epoch in range(cfg["max_epochs"]):
             model.train()
             train_preds, train_labels = [], []
@@ -767,16 +828,14 @@ def train(config=None):
             )
 
             scheduler.step(val_metrics["loss"])
+            epochs_completed = epoch + 1
 
             ckpt_path = MODEL_DIR / f"color_model_ep{epoch+1}.pth"
             torch.save(model.state_dict(), ckpt_path)
 
-            if early_stopping(val_metrics["micro_f1"], model):
+            if early_stopping(val_metrics["micro_f1"], model, epoch_idx=epoch + 1):
                 break
 
-        # -------------------------
-        # Restore / final eval
-        # -------------------------
         early_stopping.restore_best_weights(model)
 
         final_metrics = evaluate_model(
@@ -791,9 +850,6 @@ def train(config=None):
         torch.save(model.state_dict(), best_path)
         print(f"\n  Best model saved to {best_path}")
 
-        # -------------------------
-        # Save required artifacts
-        # -------------------------
         mlflow.log_artifact(str(best_path), artifact_path="checkpoints")
         mlflow.log_artifact(str(cfg["mlb_path"]), artifact_path="artifacts")
 
@@ -806,6 +862,8 @@ def train(config=None):
             image_processor=image_processor,
             mlb=mlb,
             device=device,
+            batch_size=cfg["batch_size"],
+            max_len=cfg["max_len"],
             threshold=cfg["val_threshold"],
             out_path=pred_path,
         )
@@ -815,11 +873,14 @@ def train(config=None):
             "best_val_loss": final_metrics["loss"],
             "best_val_f1_micro": final_metrics["micro_f1"],
             "best_val_f1_macro": final_metrics["macro_f1"],
+            "epochs_completed": epochs_completed,
+            "early_stopping_best_score": float(early_stopping.best_score),
+            "early_stopping_best_epoch": int(early_stopping.best_epoch),
+            "train_valid_images_count": int(len(train_valid)),
+            "val_valid_images_count": int(len(val_valid)),
+            "num_classes": int(len(mlb.classes_)),
         })
 
-        # -------------------------
-        # Log model + register
-        # -------------------------
         model_info = mlflow.pytorch.log_model(
             pytorch_model=model,
             artifact_path="model",
@@ -832,6 +893,8 @@ def train(config=None):
                 "numpy",
                 "pandas",
                 "mlflow",
+                "fugashi",
+                "unidic-lite",
             ],
         )
 
@@ -845,9 +908,6 @@ def train(config=None):
 
         current_version = str(model_version.version)
 
-        # -------------------------
-        # Compare vs previous champion
-        # -------------------------
         champion_metrics = None
         champion_score = None
 
@@ -870,7 +930,6 @@ def train(config=None):
         challenger_score = final_metrics["micro_f1"]
         promote_new_model = is_better_model(challenger_score, champion_score)
 
-        # Always mark current run as candidate
         set_registered_model_alias(
             client=client,
             model_name=MLFLOW_REGISTERED_MODEL_NAME,
@@ -907,9 +966,6 @@ def train(config=None):
             "best_model_score_after_selection": challenger_score if promote_new_model else champion_score,
         })
 
-        # -------------------------
-        # Save run to local DB
-        # -------------------------
         try:
             save_run(run_id, "ice_dual_encoder", challenger_score, cfg_clean)
         except Exception as exc:

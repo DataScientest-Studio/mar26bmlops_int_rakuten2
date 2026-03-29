@@ -55,3 +55,8 @@ def set_tags(tags: dict) -> None:
     """
     if tags:
         mlflow.set_tags(tags)
+
+def is_better_model(new_score: float, current_score: float | None) -> bool:
+    if current_score is None:
+        return True
+    return new_score > current_score
