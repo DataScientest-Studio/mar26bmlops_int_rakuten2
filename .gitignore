@@ -47,4 +47,10 @@ data/interim/*
 # models
 models/
 .pth
-.pth
+.pthmlflow/
+models/*.pth
+models/*.pkl
+artifacts/
+*/artifacts/
+*.csv
+z_helper_img.py
