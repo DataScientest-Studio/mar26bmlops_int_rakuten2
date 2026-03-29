@@ -1,8 +1,8 @@
 fastapi==0.135.1
 uvicorn==0.42.0
 python-dotenv==1.0.0
-pandas==2.3.3
-numpy==2.4.3
+pandas==2.2.3
+numpy==2.2.6
 scikit-learn==1.8.0
 scipy==1.17.1
 joblib==1.5.3
@@ -14,12 +14,9 @@ pydantic==2.12.5
 pydantic_core==2.41.5
 starlette==0.52.1
 typing_extensions==4.15.0
-
 mlflow==3.10.1
-torch==2.7.1
 transformers==4.31.0
 fugashi
 unidic-lite
-
 opencv-python==4.13.0.92
 matplotlib==3.10.8
