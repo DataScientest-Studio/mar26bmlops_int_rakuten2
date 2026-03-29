@@ -43,6 +43,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.training
+      args:
+        TORCH_INDEX: cu128
     container_name: rakuten_training
     env_file:
       - .env
@@ -56,4 +58,13 @@ services:
       - ./models:/app/models
       - ./db:/app/db
       - ./mlflow:/mlflow
+    # ── Shared Memory: MK: Increase the shared memory size for GPU training
+    shm_size: '4gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     command: python -m src.models.train_model_ice_mk
