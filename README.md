@@ -92,19 +92,19 @@ python src/data/load_data.py
 - create a basic FastAPI inference service
 
 ## Phase 2 Preparation
-- MLflow is prepared for experiment tracking
+- MLflow is set up for experiment tracking
 
-- environment variables are defined in .env.example
+- Environment variables are defined in .env
 
-- API base entrypoint is src/api/main.py
+- API entry point: src/api/main.py
 
-- raw and processed data must not be committed
+- Raw and processed data are excluded from version control
 
-- development should happen on feature branches
+- Development is done via feature branches
 
 ## Local setup
 ```bash
-cp .env.example .env
+cp .env
 pip install -r requirements.txt
 uvicorn src.api.main:app --reload
 pytest
@@ -114,3 +114,22 @@ pytest
 ```bash
 mlflow server --host 0.0.0.0 --port 5000
 ```
+## Phase 2 Overview
+- MLflow experiment tracking is integrated in the training service.
+- Model versioning is handled with MLflow Model Registry.
+- The best model is selected by comparing the new retrained model against the previous champion on validation micro-F1.
+- The application is decomposed into Docker microservices: mlflow, training, api.
+
+## How to run (Docker)
+1. docker compose up -d mlflow
+2. docker compose up -d api
+3. docker compose run --rm training python -m src.models.train_model_ice_mk
+
+## Services
+- MLflow UI: http://localhost:5000
+- API: http://localhost:8000
+
+## Model Registry
+- Registered model name: rakuten-ice-dual-encoder
+   - Candidate alias: candidate
+   - Champion alias: champion
