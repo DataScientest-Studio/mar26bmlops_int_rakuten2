@@ -4,20 +4,23 @@ services:
     container_name: mlflow
     ports:
       - "5000:5000"
+    environment:
+      MLFLOW_SERVER_ALLOWED_HOSTS: "*"
     command: >
       mlflow server
       --backend-store-uri sqlite:////mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
-      --allowed-hosts localhost,127.0.0.1,192.168.178.26,192.168.178.26:5000,mlflow,mlflow:5000
+#     --allowed-hosts localhost,127.0.0.1,mlflow:5000,0.0.0.0,172.20.0.0/16 --- IGNORE ---    
     volumes:
       - ./mlflow:/mlflow
     healthcheck:
-      test: ["CMD-SHELL", "curl -H 'Host: localhost:5000' -f http://localhost:5000 >/dev/null || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
       interval: 15s
       timeout: 10s
       retries: 10
+      start_period: 30s
 
   api:
     build:
@@ -51,4 +54,13 @@ services:
       - ./models:/app/models
       - ./db:/app/db
       - ./mlflow:/mlflow
+    # ── Shared Memory: MK: Increase the shared memory size for GPU training
+    shm_size: '4gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     command: python -m src.models.train_model_ice_mk
