@@ -1,9 +1,0 @@
-{
-  "device": "cpu",
-  "cuda_available": false,
-  "gpu_name": null,
-  "num_workers": 4,
-  "registered_model_name": "rakuten-ice-dual-encoder",
-  "champion_alias": "champion",
-  "candidate_alias": "candidate"
-}

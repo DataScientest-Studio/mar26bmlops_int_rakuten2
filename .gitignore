@@ -24,8 +24,10 @@ __pycache__/
 # databases
 rakuten_colors.db
 
-# mlflow
+# MLflow
+mlflow/
 mlruns/
+!mlflow/mlflow.db
 
 # image data
 data/images/
