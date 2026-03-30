@@ -8,7 +8,7 @@ services:
       MLFLOW_SERVER_ALLOWED_HOSTS: "localhost:5000,localhost,127.0.0.1:5000,127.0.0.1,mlflow:5000,mlflow"
     command: >
       mlflow server
-      --backend-store-uri sqlite:///mlflow.db
+      --backend-store-uri sqlite:////mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
