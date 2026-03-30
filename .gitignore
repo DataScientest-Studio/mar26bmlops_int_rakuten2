@@ -22,9 +22,7 @@ __pycache__/
 *.swo
 
 # databases
-*.db
-*.rdb
-db/*.db
+rakuten_colors.db
 
 # mlflow
 mlruns/
@@ -43,3 +41,17 @@ data/interim/*
 !data/processed/.gitkeep
 !data/external/.gitkeep
 !data/interim/.gitkeep
+
+# models – ignore large files
+models/*.pth
+models/*.pt
+models/*.pkl
+models/*.pkl.local_backup
+models/*.bin
+models/*.onnx
+models/*.h5
+models/*.joblib
+models/*.sav
+
+# helper scripts not needed in repo
+z_helper_img.py
