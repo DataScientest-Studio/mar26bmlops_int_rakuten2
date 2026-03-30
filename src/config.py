@@ -47,7 +47,7 @@ NUM_LABELS = len(COLOR_LABELS)
 XLM_CONFIG = {
     "model_name": "xlm-roberta-base",
     "lr": 2e-5,
-    "epochs": 15,
+    "epochs": 5,
     "batch_size": 32,
     "max_len": 256,
     "dropout": 0.3,
