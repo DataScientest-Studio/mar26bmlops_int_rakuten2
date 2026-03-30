@@ -4,18 +4,17 @@ services:
     container_name: mlflow
     ports:
       - "5000:5000"
-    environment:
-      MLFLOW_SERVER_ALLOWED_HOSTS: "localhost:5000,localhost,127.0.0.1:5000,127.0.0.1,mlflow:5000,mlflow"
     command: >
       mlflow server
       --backend-store-uri sqlite:////mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
+      --allowed-hosts localhost,127.0.0.1,192.168.178.26,192.168.178.26:5000,mlflow,mlflow:5000
     volumes:
       - ./mlflow:/mlflow
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; req=urllib.request.Request('http://localhost:5000', headers={'Host':'localhost:5000'}); urllib.request.urlopen(req).read()"]
+      test: ["CMD-SHELL", "curl -H 'Host: localhost:5000' -f http://localhost:5000 >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -29,8 +28,6 @@ services:
       - "8000:8000"
     env_file:
       - .env
-    environment:
-      MLFLOW_TRACKING_URI: http://mlflow:5000
     depends_on:
       mlflow:
         condition: service_healthy
@@ -46,8 +43,6 @@ services:
     container_name: rakuten_training
     env_file:
       - .env
-    environment:
-      MLFLOW_TRACKING_URI: http://mlflow:5000
     depends_on:
       mlflow:
         condition: service_healthy

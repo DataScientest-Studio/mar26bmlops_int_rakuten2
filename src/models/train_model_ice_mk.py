@@ -596,8 +596,14 @@ def train(config=None):
     cfg = {**ICE_CONFIG, **(config or {})}
     cfg_clean = sanitize_params(cfg)
 
+    print("Configured MLFLOW_TRACKING_URI:", MLFLOW_TRACKING_URI)
+    print("Configured MLFLOW_EXPERIMENT:", MLFLOW_EXPERIMENT)
+
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
+
+    print("Active MLflow tracking URI:", mlflow.get_tracking_uri())
+    print("MLflow experiment:", MLFLOW_EXPERIMENT)
 
     client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
     ensure_registered_model(client, MLFLOW_REGISTERED_MODEL_NAME)
