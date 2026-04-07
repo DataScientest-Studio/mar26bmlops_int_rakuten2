@@ -1,0 +1,34 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: python -m src.pipeline --mode ingest
+    deps:
+    - path: data/raw/X_test.csv
+      hash: md5
+      md5: b03e9f214bd27c98ecd772cc8b990623
+      size: 57856660
+    - path: data/raw/X_train.csv
+      hash: md5
+      md5: bfa8e8243379d1636f84bdcb427b744d
+      size: 329723647
+    - path: data/raw/y_train.csv
+      hash: md5
+      md5: 587cc6585d35747e844aeab2f9ef1c31
+      size: 5592658
+    - path: src/data/load_data.py
+      hash: md5
+      md5: 80c9c04ad9452e16c86dd769aad4766f
+      size: 3281
+    - path: src/db.py
+      hash: md5
+      md5: 2065345d9761cfec9da806147dc6ce0c
+      size: 6411
+    - path: src/pipeline.py
+      hash: md5
+      md5: 23749e8ad5c9498e826aba616d4b1000
+      size: 5999
+    outs:
+    - path: db/rakuten_colors.db
+      hash: md5
+      md5: 59bcf953a88ae4a61387ccf9dee4139f
+      size: 529719296
