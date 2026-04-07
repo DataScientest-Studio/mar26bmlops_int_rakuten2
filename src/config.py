@@ -137,3 +137,24 @@ MLFLOW_CANDIDATE_ALIAS = os.getenv("MLFLOW_CANDIDATE_ALIAS", "candidate")
 # ──────────────────────────────────────────────────────────────
 APP_ENV = os.getenv("APP_ENV", "development")
 MODEL_STAGE = os.getenv("MODEL_STAGE", "Production")
+
+
+
+# ──────────────────────────────────────────────────────────────
+# params.yaml create, Copy from ICE_CONFIG to params.yaml for DVC due DVC can Not read pyfiles
+# ──────────────────────────────────────────────────────────────
+
+
+import yaml  # pip install pyyaml if missing
+
+def export_params():
+    """Sync params.yaml for DVC — called automatically by pipeline."""
+    params = {
+        "ICE_CONFIG": {
+            k: v for k, v in ICE_CONFIG.items()
+            if isinstance(v, (str, int, float, bool))
+            # Skips Path objects — not serializable in YAML
+        }
+    }
+    with open(PROJECT_ROOT / "params.yaml", "w") as f:
+        yaml.dump(params, f, default_flow_style=False)
