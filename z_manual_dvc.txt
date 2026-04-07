@@ -1,0 +1,12 @@
+# 1. tracking:
+dvc add models/color_model_best.pth models/mlb.pkl
+
+# 2. Git: alles committen
+git add dvc.yaml params.yaml models/*.dvc .gitignore dvc.lock
+git commit -m "chore: track current model state before repro"
+
+# 3. Code nach GitHub pushen
+git push
+
+# 4. Daten/Modelle nach DagsHub pushen
+dvc push

@@ -1,0 +1,4 @@
+[core]
+    remote = dagshub
+['remote "dagshub"']
+    url = https://dagshub.com/MircoK90/mar26bmlops_int_rakuten2.dvc

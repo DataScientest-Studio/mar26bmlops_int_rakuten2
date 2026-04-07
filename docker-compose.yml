@@ -1,4 +1,57 @@
 services:
+
+
+  # -- MinIO S3-compatible local storage --
+  minio:
+    image: minio/minio:latest
+    container_name: rakuten_minio
+    ports:
+      - "9000:9000"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command:server /data --console-adress: ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # -- MinIO bucket init (create Bcukets) --
+  minio_init:
+    image: minio/mc:latest
+    container_name: rakuten_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    # Creates mlflow-artifacts and dvc-store buckets on first run
+    entrypoint: >
+      sh -c "
+        sleep 10 &&
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/mlflow-artifacts &&
+        mc mb --ignore-existing local/dvc-store &&
+        echo 'Buckets ready'
+      "
+
+
+  # -- Nginx reverse proxy (public entry point) --
+  nginx:
+    image: nginx:alpine
+    container_name: rakuten_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  # -- MLflow tracking server --
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     container_name: mlflow
@@ -12,7 +65,6 @@ services:
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
-#     --allowed-hosts localhost,127.0.0.1,mlflow:5000,0.0.0.0,172.20.0.0/16 --- IGNORE ---    
     volumes:
       - ./mlflow:/mlflow
     healthcheck:
@@ -22,6 +74,7 @@ services:
       retries: 10
       start_period: 30s
 
+  # -- FastAPI serving --
   api:
     build:
       context: .
@@ -38,7 +91,9 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./db:/app/db
+    restart: unless-stopped
 
+  # -- GPU training container --
   training:
     build:
       context: .
@@ -54,7 +109,6 @@ services:
       - ./models:/app/models
       - ./db:/app/db
       - ./mlflow:/mlflow
-    # ── Shared Memory: MK: Increase the shared memory size for GPU training
     shm_size: '4gb'
     deploy:
       resources:
@@ -64,3 +118,5 @@ services:
               count: 1
               capabilities: [gpu]
     command: python -m src.models.train_model_ice_mk
+    profiles:
+      - training
