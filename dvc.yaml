@@ -1,10 +1,66 @@
-# dvc.yaml
+# DVC pipeline — reproducible ML workflow
+#
+# Setup:
+#   pip install dvc          #dvc-s3 or dvc-gdrive / dvc-ssh
+#   dvc init
+#   dvc remote add -d dagshub https://dagshub.com/MircoK90/mar26bmlops_int_rakuten2.dvc
+       #dvc remote add origin https://dagshub.com/MircoK90/mar26bmlops_int_rakuten2.dvc
+#
+# Run full pipeline:
+#   dvc repro
+#
+# Track model artifacts:
+#   dvc add models/color_model_best.pth models/mlb.pkl
+#   git add models/*.dvc models/.gitignore
+#   dvc push
 
-# Setup
-# install dvc dvc-3
-# dvc init
-# dvc remote add -d storage s3://dvc-remote-storage
+stages:
+  ingest:
+    cmd: python -m src.pipeline --mode ingest
+    deps:
+      - src/pipeline.py
+      - src/db.py
+      - src/data/load_data.py
+      - data/raw/X_train.csv
+      - data/raw/y_train.csv
+      - data/raw/X_test.csv
+    outs:
+      - db/rakuten_colors.db
 
-# Run the pipeline.
-# dvc repro
-# update for oush
+  train:
+    cmd: python -m src.models.train_model_ice_mk
+    deps:
+      - src/models/train_model_ice_mk.py
+      - src/config.py
+      - db/rakuten_colors.db
+      - data/images
+    outs:
+      - models/color_model_best.pth
+      - models/mlb.pkl
+    metrics:
+      - models/y_pred_training.csv:
+          cache: false
+    params:
+      - params.yaml:
+          - ICE_CONFIG
+
+  predict:
+    cmd: python -m src.models.predict_model_ice_mk --split val
+    deps:
+      - src/models/predict_model_ice_mk.py
+      - models/color_model_best.pth
+      - models/mlb.pkl
+      - db/rakuten_colors.db
+    outs:
+      - reports/y_pred.csv:
+          cache: false
+
+  drift:
+    cmd: python -m src.monitoring.drift
+    deps:
+      - src/monitoring/drift.py
+      - models/y_pred_training.csv
+      - reports/y_pred.csv
+    outs:
+      - reports/drift_report.html:
+          cache: false
