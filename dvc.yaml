@@ -1,0 +1,10 @@
+# dvc.yaml
+
+# Setup
+# install dvc dvc-3
+# dvc init
+# dvc remote add -d storage s3://dvc-remote-storage
+
+# Run the pipeline.
+# dvc repro
+
