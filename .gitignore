@@ -3,15 +3,16 @@ venv/
 .venv/
 
 # dotenv
+.env
 .env2
 .env3
 .env4
+
 # python cache
 __pycache__/
 *.py[cod]
 .mypy_cache/
 .ipynb_checkpoints/
-
 
 # IDE
 .vscode/
@@ -25,6 +26,7 @@ __pycache__/
 
 # databases
 rakuten_colors.db
+*.db
 
 # MLflow
 mlflow/
@@ -34,7 +36,6 @@ mlruns/
 # image data
 data/images/
 data/images_hidden/
-
 
 # data folders: keep structure, ignore contents
 data/raw/*
@@ -59,17 +60,19 @@ models/*.h5
 models/*.joblib
 models/*.sav
 *.pkl
+models/*.png
 
 # helper scripts not needed in repo
 z_helper_img.py
-
-# mk 
-db/
-*.db
-models/*.png
 z_mk_manual_dvc_mlflow_MinIO.txt
-data/images_NFkV58V.tar
-projekt_snapshot.zip
-*.zip
-+*.tar
+
+# local folders / artifacts
+db/
+minio_data/
 z_space_mk_prepare/
+
+# archives
+*.zip
+*.tar
+projekt_snapshot.zip
+data/images_NFkV58V.tar
