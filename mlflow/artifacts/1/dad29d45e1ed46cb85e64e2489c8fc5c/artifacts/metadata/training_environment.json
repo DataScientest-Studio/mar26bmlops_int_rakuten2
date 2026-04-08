@@ -1,0 +1,9 @@
+{
+  "device": "cuda",
+  "cuda_available": true,
+  "gpu_name": "NVIDIA GeForce RTX 5060 Ti",
+  "num_workers": 4,
+  "registered_model_name": "rakuten-ice-dual-encoder",
+  "champion_alias": "champion",
+  "candidate_alias": "candidate"
+}

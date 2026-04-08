@@ -1,0 +1,16 @@
+channels:
+- conda-forge
+dependencies:
+- python=3.11.15
+- pip<=26.0.1
+- pip:
+  - torch
+  - transformers
+  - scikit-learn
+  - pillow
+  - numpy
+  - pandas
+  - mlflow
+  - fugashi
+  - unidic-lite
+name: mlflow-env

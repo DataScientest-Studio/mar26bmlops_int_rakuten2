@@ -1,0 +1,9 @@
+torch
+transformers
+scikit-learn
+pillow
+numpy
+pandas
+mlflow
+fugashi
+unidic-lite
