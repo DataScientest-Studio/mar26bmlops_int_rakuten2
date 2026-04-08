@@ -4,7 +4,7 @@ ICE_CONFIG:
   encoder_lr: 2.0e-05
   es_patience: 3
   learning_rate: 0.003
-  max_epochs: 2
+  max_epochs: 1
   max_len: 128
   predict_split: val
   text_model_id: cl-tohoku/bert-base-japanese-v3
