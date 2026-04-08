@@ -65,6 +65,7 @@ kill -9 6637 6640 6641 6642 6643
 lsof -i :5000
 pkill -f "mlflow server"
 
+
 docker compose up -d minio minio_init mlflow 
 
 
@@ -72,3 +73,41 @@ ls -la mlflow/mlflow.db
 chmod 666 mlflow/mlflow.db
 # oder falls der ganze Ordner betroffen:
 chmod -R u+rw mlflow/
+chmod -R u+rwx mlflow/artifacts
+sudo chmod -R 777 mlflow/
+
+
+dvc repro
+
+git add dvc.lock params.yaml
+git commit -m "test: 1 epoch full pipeline run"
+git push origin
+git push myfork
+
+# model regesiter
+python -c "
+import mlflow
+mlflow.set_tracking_uri('http://localhost:5000')
+client = mlflow.MlflowClient()
+runs = client.search_runs('1', order_by=['start_time DESC'], max_results=1)
+run_id = runs[0].info.run_id
+print('Run ID:', run_id)
+model_uri = f'runs:/{run_id}/model'
+mlflow.register_model(model_uri, 'rakuten-ice-dual-encoder')
+"
+
+# sq little
+sqlite3 mlflow/mlflow.db "
+SELECT r.run_uuid, r.start_time, p.key, p.value 
+FROM runs r 
+JOIN params p ON r.run_uuid = p.run_uuid 
+WHERE p.key = 'max_epochs'
+ORDER BY r.start_time DESC LIMIT 5;
+"
+Oder Metrics:
+bashsqlite3 mlflow/mlflow.db "
+SELECT r.run_uuid, m.key, m.value 
+FROM runs r 
+JOIN metrics m ON r.run_uuid = m.run_uuid
+ORDER BY r.start_time DESC LIMIT 10;
+"
