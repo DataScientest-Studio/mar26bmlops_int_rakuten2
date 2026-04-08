@@ -30,7 +30,7 @@ stages:
     outs:
     - path: db/rakuten_colors.db
       hash: md5
-      md5: f07342e39bd9aa29f4b6bb283cac1ba8
+      md5: 59bcf953a88ae4a61387ccf9dee4139f
       size: 529719296
   train:
     cmd: python -m src.models.train_model_ice_mk
