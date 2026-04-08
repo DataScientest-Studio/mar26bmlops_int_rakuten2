@@ -37,7 +37,6 @@ services:
         "
 
 
-
   # -- MLflow tracking server --
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
@@ -95,6 +94,7 @@ services:
       - ./db:/app/db
     restart: unless-stopped
 
+  # docker-compose.yml
   # -- GPU training container --
   training:
     build:
