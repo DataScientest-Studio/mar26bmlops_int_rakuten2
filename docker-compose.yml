@@ -56,6 +56,7 @@ services:
       --default-artifact-root s3://mlflow-artifacts/
       --host 0.0.0.0
       --port 5000
+      --allowed-hosts "*"
     volumes:
       - ./mlflow:/mlflow
     depends_on:

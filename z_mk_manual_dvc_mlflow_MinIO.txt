@@ -13,7 +13,6 @@ dvc push
 
 
 
-
 # dvc
 dvc remote modify dagshub --local auth basic
 dvc remote modify dagshub --local user MircoK90
@@ -62,6 +61,14 @@ AWS_SECRET_ACCESS_KEY=minioadmin
 MLFLOW_S3_ENDPOINT_URL=http://localhost:9000
 
 
-(venv) mirco@wsl:~/rakuten2$ kill -9 6637 6640 6641 6642 6643
-(venv) mirco@wsl:~/rakuten2$ lsof -i :5000
+kill -9 6637 6640 6641 6642 6643
+lsof -i :5000
 pkill -f "mlflow server"
+
+docker compose up -d minio minio_init mlflow 
+
+
+ls -la mlflow/mlflow.db
+chmod 666 mlflow/mlflow.db
+# oder falls der ganze Ordner betroffen:
+chmod -R u+rw mlflow/
