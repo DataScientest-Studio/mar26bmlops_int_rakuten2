@@ -42,7 +42,7 @@ stages:
       nfiles: 249470
     - path: db/rakuten_colors.db
       hash: md5
-      md5: 088eecc83a2abbb1fafe1a15596960a5
+      md5: a53cb67aa0b6406ef7646f6e22c38b95
       size: 529719296
     - path: src/config.py
       hash: md5
@@ -72,7 +72,7 @@ stages:
     outs:
     - path: models/color_model_best.pth
       hash: md5
-      md5: e24f829d3f85198540e3738f6b399759
+      md5: 6e07c29f856219838d4f99900251c076
       size: 796643585
     - path: models/mlb.pkl
       hash: md5
@@ -80,5 +80,5 @@ stages:
       size: 541
     - path: models/y_pred_training.csv
       hash: md5
-      md5: c56e82b37d8b0d147634f13cc1de6a31
-      size: 1078132
+      md5: 944806296c4d4f5f0ae0268552f1cf53
+      size: 1168319
