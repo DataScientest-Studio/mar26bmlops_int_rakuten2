@@ -1,20 +1,19 @@
 services:
-
-
-  # -- MinIO S3-compatible local storage --
+# -- MinIO S3-compatible local storage --
   minio:
     image: minio/minio:latest
     container_name: rakuten_minio
-    ports:
-      - "9000:9000"
+    ports :
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # MinIO Console
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    command:server /data --console-adress: ":9001"
+    command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live || exit 1"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,27 +28,15 @@ services:
         condition: service_healthy
     # Creates mlflow-artifacts and dvc-store buckets on first run
     entrypoint: >
-      sh -c "
+      /bin/sh -c "
         sleep 10 &&
         mc alias set local http://minio:9000 minioadmin minioadmin &&
         mc mb --ignore-existing local/mlflow-artifacts &&
         mc mb --ignore-existing local/dvc-store &&
         echo 'Buckets ready'
-      "
+        "
 
 
-  # -- Nginx reverse proxy (public entry point) --
-  nginx:
-    image: nginx:alpine
-    container_name: rakuten_nginx
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      api:
-        condition: service_started
-    restart: unless-stopped
 
   # -- MLflow tracking server --
   mlflow:
@@ -59,20 +46,29 @@ services:
       - "5000:5000"
     environment:
       MLFLOW_SERVER_ALLOWED_HOSTS: "*"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+
     command: >
       mlflow server
       --backend-store-uri sqlite:////mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --default-artifact-root s3://mlflow-artifacts/
       --host 0.0.0.0
       --port 5000
     volumes:
       - ./mlflow:/mlflow
+    depends_on:
+      minio_init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
       interval: 15s
       timeout: 10s
       retries: 10
       start_period: 30s
+
+
 
   # -- FastAPI serving --
   api:
@@ -84,6 +80,10 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
     depends_on:
       mlflow:
         condition: service_healthy
@@ -101,6 +101,11 @@ services:
     container_name: rakuten_training
     env_file:
       - .env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+
     depends_on:
       mlflow:
         condition: service_healthy
@@ -120,3 +125,20 @@ services:
     command: python -m src.models.train_model_ice_mk
     profiles:
       - training
+
+  # -- Nginx reverse proxy (public entry point) --
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: rakuten_nginx
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     api:
+  #       condition: service_started
+  #   restart: unless-stopped
+
+
+volumes:
+  minio_data:  # Persistent MinIO storage

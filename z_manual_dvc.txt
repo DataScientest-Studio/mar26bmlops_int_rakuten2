@@ -10,3 +10,22 @@ git push
 
 # 4. Daten/Modelle nach DagsHub pushen
 dvc push
+
+
+
+
+# dvc
+dvc remote modify dagshub --local auth basic
+dvc remote modify dagshub --local user MircoK90
+dvc remote modify dagshub --local password <DAGSHUB_TOKEN>
+
+
+dvc remote modify minio --local access_key_id minioadmin
+dvc remote modify minio --local secret_access_key minioadmin
+
+
+Die zwei Remotes parallel:
+dvc push              # → DagsHub (default, Production)
+dvc push -r minio     # → MinIO lokal (dev/test)
+
+http://localhost:9001
