@@ -4,6 +4,8 @@ venv/
 
 # dotenv
 .env
+.env2
+.env3
 
 # python cache
 __pycache__/
