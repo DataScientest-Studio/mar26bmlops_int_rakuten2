@@ -30,7 +30,7 @@ stages:
     outs:
     - path: db/rakuten_colors.db
       hash: md5
-      md5: 59bcf953a88ae4a61387ccf9dee4139f
+      md5: a53cb67aa0b6406ef7646f6e22c38b95
       size: 529719296
   train:
     cmd: python -m src.models.train_model_ice_mk
@@ -82,3 +82,47 @@ stages:
       hash: md5
       md5: 944806296c4d4f5f0ae0268552f1cf53
       size: 1168319
+  predict:
+    cmd: python -m src.models.predict_model_ice_mk --split val
+    deps:
+    - path: db/rakuten_colors.db
+      hash: md5
+      md5: a53cb67aa0b6406ef7646f6e22c38b95
+      size: 529719296
+    - path: models/color_model_best.pth
+      hash: md5
+      md5: 6e07c29f856219838d4f99900251c076
+      size: 796643585
+    - path: models/mlb.pkl
+      hash: md5
+      md5: 9101195720669b133351d39d093b2f94
+      size: 541
+    - path: src/models/predict_model_ice_mk.py
+      hash: md5
+      md5: 564d344d20a2f451849335884cf57f0c
+      size: 7754
+    outs:
+    - path: reports/y_pred.csv
+      hash: md5
+      md5: d41d8cd98f00b204e9800998ecf8427e
+      size: 0
+  drift:
+    cmd: python -m src.monitoring.drift
+    deps:
+    - path: models/y_pred_training.csv
+      hash: md5
+      md5: 944806296c4d4f5f0ae0268552f1cf53
+      size: 1168319
+    - path: reports/y_pred.csv
+      hash: md5
+      md5: d41d8cd98f00b204e9800998ecf8427e
+      size: 0
+    - path: src/monitoring/drift.py
+      hash: md5
+      md5: bf6c49c65e58885b086da717b356f1c0
+      size: 2325
+    outs:
+    - path: reports/drift_report.html
+      hash: md5
+      md5: d41d8cd98f00b204e9800998ecf8427e
+      size: 0
