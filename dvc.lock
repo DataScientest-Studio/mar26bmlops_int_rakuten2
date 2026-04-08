@@ -30,7 +30,7 @@ stages:
     outs:
     - path: db/rakuten_colors.db
       hash: md5
-      md5: 59bcf953a88ae4a61387ccf9dee4139f
+      md5: 0e35699a2fb9497c55f03dcc00dfedd1
       size: 529719296
   train:
     cmd: python -m src.models.train_model_ice_mk
@@ -42,7 +42,7 @@ stages:
       nfiles: 249470
     - path: db/rakuten_colors.db
       hash: md5
-      md5: 944009051026b339e0e548cca210bb3a
+      md5: 0e35699a2fb9497c55f03dcc00dfedd1
       size: 529719296
     - path: src/config.py
       hash: md5
@@ -60,7 +60,7 @@ stages:
           encoder_lr: 2e-05
           es_patience: 3
           learning_rate: 0.003
-          max_epochs: 1
+          max_epochs: 2
           max_len: 128
           predict_split: val
           text_model_id: cl-tohoku/bert-base-japanese-v3
@@ -72,7 +72,7 @@ stages:
     outs:
     - path: models/color_model_best.pth
       hash: md5
-      md5: 2971f938ab07496c5829bc3599161b71
+      md5: a95426b4a17525cfc8a9a42b9e5f7ebd
       size: 796643585
     - path: models/mlb.pkl
       hash: md5
@@ -80,18 +80,18 @@ stages:
       size: 541
     - path: models/y_pred_training.csv
       hash: md5
-      md5: d52357fcf1e364dcf3cdfeacaeb7cd20
-      size: 997855
+      md5: 832a93e58ce95f2105b69234c400df5e
+      size: 1076722
   predict:
     cmd: python -m src.models.predict_model_ice_mk --split val
     deps:
     - path: db/rakuten_colors.db
       hash: md5
-      md5: 944009051026b339e0e548cca210bb3a
+      md5: 0e35699a2fb9497c55f03dcc00dfedd1
       size: 529719296
     - path: models/color_model_best.pth
       hash: md5
-      md5: 2971f938ab07496c5829bc3599161b71
+      md5: a95426b4a17525cfc8a9a42b9e5f7ebd
       size: 796643585
     - path: models/mlb.pkl
       hash: md5
@@ -111,8 +111,8 @@ stages:
     deps:
     - path: models/y_pred_training.csv
       hash: md5
-      md5: d52357fcf1e364dcf3cdfeacaeb7cd20
-      size: 997855
+      md5: 832a93e58ce95f2105b69234c400df5e
+      size: 1076722
     - path: reports/y_pred.csv
       hash: md5
       md5: d41d8cd98f00b204e9800998ecf8427e
