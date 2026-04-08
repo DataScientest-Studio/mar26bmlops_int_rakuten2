@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+from src.config import export_params
+export_params() # sync params.yaml before every run
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -24,9 +26,7 @@ from src.db import init_db, ingest_products, get_db_summary, save_predictions, c
 from src.models.train_model_ice_mk import train, generate_predictions
 from src.models.predict_model_ice_mk import predict
 
-# DVC params.yaml 
-from src.config import export_params
-export_params()  # Always sync params.yaml before pipeline runs
+
 
 
 def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=None):

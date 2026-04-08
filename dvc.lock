@@ -25,8 +25,8 @@ stages:
       size: 6411
     - path: src/pipeline.py
       hash: md5
-      md5: 23749e8ad5c9498e826aba616d4b1000
-      size: 5999
+      md5: 28c1585ee46eb9cac8f3cf98557f25e7
+      size: 5969
     outs:
     - path: db/rakuten_colors.db
       hash: md5
