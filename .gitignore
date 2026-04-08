@@ -6,7 +6,7 @@ venv/
 .env
 .env2
 .env3
-
+.env4
 # python cache
 __pycache__/
 *.py[cod]
