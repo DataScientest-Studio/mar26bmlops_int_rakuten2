@@ -122,3 +122,14 @@ data/interim/*
 !data/processed/.gitkeep
 !data/external/.gitkeep
 !data/interim/.gitkeep
+
+minio_data/
+*.jpg
+*.png
+*.csv
+*.pkl
+*.pt
+*.h5
+__pycache__/
+.venv/
+.env
