@@ -651,7 +651,7 @@ def train(config=None):
         valid_indices=val_valid,
     )
 
-    num_workers = min(4, os.cpu_count() or 1)
+    num_workers = 1
     train_dl = DataLoader(
         train_ds,
         batch_size=cfg["batch_size"],

@@ -67,12 +67,15 @@ services:
       --port 5000
     volumes:
       - ./mlflow:/mlflow
+<<<<<<< HEAD
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
       interval: 15s
       timeout: 10s
       retries: 10
       start_period: 30s
+=======
+>>>>>>> 610976c (update training script and docker compose)
 
   # -- FastAPI serving --
   api:
@@ -85,8 +88,7 @@ services:
     env_file:
       - .env
     depends_on:
-      mlflow:
-        condition: service_healthy
+      - mlflow
     volumes:
       - ./data:/app/data
       - ./models:/app/models
@@ -102,8 +104,8 @@ services:
     env_file:
       - .env
     depends_on:
-      mlflow:
-        condition: service_healthy
+      - mlflow
+    shm_size: "8gb"
     volumes:
       - ./data:/app/data
       - ./models:/app/models
