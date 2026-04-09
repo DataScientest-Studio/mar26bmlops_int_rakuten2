@@ -33,25 +33,25 @@ stages:
       md5: 59bcf953a88ae4a61387ccf9dee4139f
       size: 529719296
   train:
-    cmd: python -m src.models.train_model_ice_mk
+    cmd: python -m src.models.train_model_final
     deps:
     - path: data/images
       hash: md5
       md5: 8aeac5c7b6431a78b26b6301ef9c13b8.dir
       size: 3179271883
       nfiles: 249470
-    - path: db/rakuten_colors.db
+    - path: db/rakuten.db
       hash: md5
-      md5: f496ef1532520de0c3d898da5a46ba1e
+      md5: 3761ace3a9ac3ebb11d5122c5ab1a461
       size: 529719296
     - path: src/config.py
       hash: md5
       md5: c0b80e9dddc034dbadab58f9029be85e
       size: 7964
-    - path: src/models/train_model_ice_mk.py
+    - path: src/models/train_model_final.py
       hash: md5
-      md5: a9c2c0def5253534b9cf6fbd44f1e01e
-      size: 35532
+      md5: 47a258eeb87103de189d0758de278fbe
+      size: 42423
     params:
       params.yaml:
         ICE_CONFIG:
@@ -60,7 +60,7 @@ stages:
           encoder_lr: 2e-05
           es_patience: 3
           learning_rate: 0.003
-          max_epochs: 3
+          max_epochs: 1
           max_len: 128
           predict_split: val
           text_model_id: cl-tohoku/bert-base-japanese-v3
@@ -72,13 +72,9 @@ stages:
     outs:
     - path: models/color_model_best.pth
       hash: md5
-      md5: be12d74e60a0fba4afc766e248370cee
+      md5: 550cf2201fb3fcf649206f355d2663a2
       size: 796643585
     - path: models/mlb.pkl
       hash: md5
       md5: 9101195720669b133351d39d093b2f94
       size: 541
-    - path: models/y_pred_training.csv
-      hash: md5
-      md5: a229e9a5a48e8315840ed4e292519892
-      size: 1017424

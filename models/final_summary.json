@@ -1,12 +1,12 @@
 {
-  "run_id": "21798789006e4ff49444269cd416cdcd",
+  "run_id": "5e09006aef63441fb46652002b628a4a",
   "best_epoch": 1,
   "epochs_completed": 1,
-  "best_val_f1_micro": 0.6443057722308893,
-  "best_val_f1_macro": 0.5753101963125388,
-  "best_val_precision_micro": 0.5384529771841959,
-  "best_val_precision_macro": 0.48223248828184684,
-  "best_val_recall_micro": 0.8019607378815506,
-  "best_val_recall_macro": 0.7425868979971217,
+  "best_val_f1_micro": 0.5974082690159652,
+  "best_val_f1_macro": 0.5398413804497055,
+  "best_val_precision_micro": 0.4628588532313058,
+  "best_val_precision_macro": 0.41696470871966285,
+  "best_val_recall_micro": 0.8422411139264486,
+  "best_val_recall_macro": 0.7981828201807736,
   "dataset_version": "f97c6c8809d17ef9f66720c545036b5666ad6d52e8c204cf41c94dd39448d699"
 }
