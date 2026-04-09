@@ -60,3 +60,13 @@ models/*.sav
 z_helper_img.pydb/*.db
 mlruns/
 __pycache__/
+db/*.db
+mlartifacts/
+mlruns/
+models/*.pth
+*.pth
+db/*.db
+mlartifacts/
+mlruns/
+models/*.pth
+*.pth
