@@ -29,4 +29,4 @@ RUN pip install --upgrade pip && \
 
 COPY . /app
 
-CMD ["python", "-m", "src.models.train_model_ice_mk"]
+CMD ["python", "-m", "src.models.train_model_final"]

@@ -37,7 +37,6 @@ stages:
     outs:
       - models/color_model_best.pth
       - models/mlb.pkl
-
     params:
       - params.yaml:
           - ICE_CONFIG
@@ -46,19 +45,26 @@ stages:
     cmd: python -m src.models.predict_model_final --split val
     deps:
       - src/models/predict_model_final.py
-      - models/color_model_best.pth
-      - models/mlb.pkl
       - db/rakuten.db
     outs:
       - reports/y_pred_val.csv:
+          cache: false
+
+  predict_train:
+    cmd: python -m src.models.predict_model_final --split train
+    deps:
+      - src/models/predict_model_final.py
+      - db/rakuten.db
+    outs:
+      - reports/y_pred_train.csv:
           cache: false
 
   drift:
     cmd: python -m src.monitoring.drift
     deps:
       - src/monitoring/drift.py
+      - reports/y_pred_train.csv
       - reports/y_pred_val.csv
-      - reports/y_pred.csv
     outs:
       - reports/drift_report.html:
           cache: false

@@ -125,7 +125,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    command: python -m src.models.train_model_ice_mk
+    command: python -m src.models.train_model_final
     profiles:
       - training
 
