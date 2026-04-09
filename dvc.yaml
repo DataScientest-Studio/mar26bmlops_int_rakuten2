@@ -37,9 +37,7 @@ stages:
     outs:
       - models/color_model_best.pth
       - models/mlb.pkl
-    metrics:
-      - models/y_pred_training.csv:
-          cache: false
+
     params:
       - params.yaml:
           - ICE_CONFIG
@@ -52,14 +50,14 @@ stages:
       - models/mlb.pkl
       - db/rakuten.db
     outs:
-      - reports/y_pred.csv:
+      - reports/y_pred_val.csv:
           cache: false
 
   drift:
     cmd: python -m src.monitoring.drift
     deps:
       - src/monitoring/drift.py
-      - models/y_pred_training.csv
+      - reports/y_pred_val.csv
       - reports/y_pred.csv
     outs:
       - reports/drift_report.html:

@@ -13,6 +13,7 @@ __pycache__/
 .mypy_cache/
 .ipynb_checkpoints/
 
+
 # IDE
 .vscode/
 .idea/
@@ -64,3 +65,4 @@ z_helper_img.py
 db/
 *.db
 models/*.png
+z_mk_manual_dvc_mlflow_MinIO.txt

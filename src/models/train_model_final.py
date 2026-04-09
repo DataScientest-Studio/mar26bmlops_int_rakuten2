@@ -7,6 +7,10 @@ Usage:
     python -m src.models.train_model_ice_sql_mlflow --epochs 15 --batch_size 8
 """
 
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend, kein GUI nötig
+import matplotlib.pyplot as plt
+
 import os
 import sys
 import json
