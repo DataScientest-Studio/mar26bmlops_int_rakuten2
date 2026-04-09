@@ -72,7 +72,7 @@ class ModelService:
 
         try:
             import torch
-            from src.models.train_model_ice_mk import (
+            from src.models.train_model_final import (
                 DualEncoder, ColorClassifier, ICEModel,
             )
 
@@ -151,7 +151,7 @@ class ModelService:
 
         if image_path and Path(image_path).exists():
             try:
-                from src.models.train_model_ice_mk import load_image_as_rgb_array
+                from src.models.train_model_final import load_image_as_rgb_array
                 image_arr = load_image_as_rgb_array(image_path)
             except Exception:
                 image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)

@@ -25,14 +25,14 @@ stages:
       - data/raw/y_train.csv
       - data/raw/X_test.csv
     outs:
-      - db/rakuten_colors.db
+      - db/rakuten.db
 
   train:
-    cmd: python -m src.models.train_model_ice_mk
+    cmd: python -m src.models.train_model_final
     deps:
-      - src/models/train_model_ice_mk.py
+      - src/models/train_model_final.py
       - src/config.py
-      - db/rakuten_colors.db
+      - db/rakuten.db
       - data/images
     outs:
       - models/color_model_best.pth
@@ -45,12 +45,12 @@ stages:
           - ICE_CONFIG
 
   predict:
-    cmd: python -m src.models.predict_model_ice_mk --split val
+    cmd: python -m src.models.predict_model_final --split val
     deps:
-      - src/models/predict_model_ice_mk.py
+      - src/models/predict_model_final.py
       - models/color_model_best.pth
       - models/mlb.pkl
-      - db/rakuten_colors.db
+      - db/rakuten.db
     outs:
       - reports/y_pred.csv:
           cache: false

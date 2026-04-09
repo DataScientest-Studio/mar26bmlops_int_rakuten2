@@ -23,8 +23,8 @@ from src.config import (
     COLOR_LABELS, DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
 )
 from src.db import init_db, ingest_products, get_db_summary, save_predictions, clear_products
-from src.models.train_model_ice_mk import train, generate_predictions
-from src.models.predict_model_ice_mk import predict
+from src.models.train_model_final import train
+from src.models.predict_model_final import predict
 
 
 
@@ -79,28 +79,29 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
         summary = get_db_summary()
         print(f"  DB: {summary['products_by_split']}")
 
-    import os
-    if os.getenv("USER") == "mirco":
-        import shutil
-        shutil.copy(
-            "/home/mirco/rakuten2/db/rakuten_colors.db",
-            "/mnt/c/02_Project_MLOPS/rakuten_colors.db"
-        )
-        print("DB Copy to local for Mirco only")
+    # import os
+    # if os.getenv("USER") == "mirco":
+    #     import shutil
+    #     shutil.copy(
+    #         "/home/mirco/rakuten2/db/rakuten.db",
+    #         "/mnt/c/02_Project_MLOPS/rakuten_colors.db"
+    #     )
+    #     print("DB Copy to local for Mirco only")
 
-    if mode == "ingest":
-        print("\nDone (ingest only).")
-        return
+    # if mode == "ingest":
+    #     print("\nDone (ingest only).")
+    #     return
 
     # -- 4. ICE DualEncoder training --
     if mode in ("full", "train"):
         print("\n[4/6] ICE DualEncoder training...")
         config = {**ICE_CONFIG, **(config_overrides or {})}
-        classifier, dual_encoder, mlb, run_id = train(config=config)
+        result = train(config=config)          # dict
+        run_id = result["run_id"]              # if needed
 
     if mode == "train":
         print("\nDone (train only).")
-        return classifier, dual_encoder, mlb, run_id
+        return result
 
     # -- 5. Test set prediction --
     if mode in ("full", "predict"):
@@ -110,24 +111,25 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
         predict(split="test", out_path=str(out_path))
 
     # -- 6. Submission --
-    print("\n[6/6] Creating submission...")
-    sub_path = DATA_DIR / "submissions" / "submission_ice_v1.csv"
-    results = pd.read_csv(out_path)
-    results.to_csv(sub_path, index=False)
+    if mode == "full":
+        print("\n[6/6] Creating submission...")
+        sub_path = DATA_DIR / "submissions" / "submission_ice_v1.csv"
+        results = pd.read_csv(out_path)
+        results.to_csv(sub_path, index=False)
 
-    try:
-        import mlflow
-        mlflow.set_experiment(MLFLOW_EXPERIMENT)
-        with mlflow.start_run(run_name="ice_dual_encoder_full"):
-            mlflow.log_param("mission_mode", mission_mode)
-            mlflow.log_artifact(str(sub_path))
-    except Exception:
-        pass
+        try:
+            import mlflow
+            mlflow.set_experiment(MLFLOW_EXPERIMENT)
+            with mlflow.start_run(run_name="ice_dual_encoder_full"):
+                mlflow.log_param("mission_mode", mission_mode)
+                mlflow.log_artifact(str(sub_path))
+        except Exception:
+            pass
 
-    print("\n" + "=" * 60)
-    print("PIPELINE DONE!")
-    print(f"  Submission: {sub_path}")
-    print("=" * 60)
+        print("\n" + "=" * 60)
+        print("PIPELINE DONE!")
+        print(f"  Submission: {sub_path}")
+        print("=" * 60)
 
 
 if __name__ == "__main__":
