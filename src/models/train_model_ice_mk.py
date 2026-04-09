@@ -20,8 +20,10 @@ import pickle
 import hashlib
 import argparse
 import tempfile
+from io import BytesIO
 from pathlib import Path
 
+import boto3
 import numpy as np
 import pandas as pd
 from PIL import Image, ImageFile
@@ -56,6 +58,12 @@ from src.config import (
     MLFLOW_REGISTERED_MODEL_NAME,
     MLFLOW_CHAMPION_ALIAS,
     MLFLOW_CANDIDATE_ALIAS,
+    IMAGE_SOURCE,
+    MINIO_ENDPOINT,
+    MINIO_ROOT_USER,
+    MINIO_ROOT_PASSWORD,
+    MINIO_BUCKET_IMAGES,
+    MINIO_IMAGE_PREFIX,
 )
 from src.db import get_split_data, save_run
 
@@ -142,6 +150,70 @@ def log_json_artifact(filename: str, payload: dict, artifact_path: str = "metada
         out = Path(tmpdir) / filename
         out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         mlflow.log_artifact(str(out), artifact_path=artifact_path)
+
+
+# ============================================================
+# MinIO helpers
+# ============================================================
+
+_MINIO_CLIENT = None
+
+
+def get_minio_client():
+    global _MINIO_CLIENT
+    if _MINIO_CLIENT is None:
+        _MINIO_CLIENT = boto3.client(
+            "s3",
+            endpoint_url=f"http://{MINIO_ENDPOINT}",
+            aws_access_key_id=MINIO_ROOT_USER,
+            aws_secret_access_key=MINIO_ROOT_PASSWORD,
+        )
+    return _MINIO_CLIENT
+
+
+def build_image_key(image_file_name: str, prefix: str = "") -> str:
+    prefix = (prefix or "").strip("/")
+    image_file_name = str(image_file_name).lstrip("/")
+    if prefix:
+        return f"{prefix}/{image_file_name}"
+    return image_file_name
+
+
+def load_image_as_rgb_array_local(path: str) -> np.ndarray:
+    image = Image.open(path).convert("RGB")
+    arr = np.array(image)
+    if arr.ndim == 2:
+        arr = np.stack([arr] * 3, axis=-1)
+    elif arr.shape[-1] != 3:
+        arr = arr[:, :, :3]
+    return arr
+
+
+def load_image_as_rgb_array_minio(bucket: str, key: str) -> np.ndarray:
+    s3 = get_minio_client()
+    obj = s3.get_object(Bucket=bucket, Key=key)
+    image = Image.open(BytesIO(obj["Body"].read())).convert("RGB")
+    arr = np.array(image)
+    if arr.ndim == 2:
+        arr = np.stack([arr] * 3, axis=-1)
+    elif arr.shape[-1] != 3:
+        arr = arr[:, :, :3]
+    return arr
+
+
+def load_image_as_rgb_array(
+    image_file_name: str,
+    image_source: str = "minio",
+    img_dir: str | None = None,
+    minio_bucket: str | None = None,
+    minio_prefix: str = "",
+) -> np.ndarray:
+    if image_source == "minio":
+        key = build_image_key(image_file_name, minio_prefix)
+        return load_image_as_rgb_array_minio(minio_bucket, key)
+
+    img_path = os.path.join(str(img_dir).rstrip("/"), image_file_name)
+    return load_image_as_rgb_array_local(img_path)
 
 
 # ============================================================
@@ -279,21 +351,6 @@ class EarlyStopping:
 
 
 # ============================================================
-# Image Loading
-# ============================================================
-
-def load_image_as_rgb_array(path: str) -> np.ndarray:
-    """Open image and return guaranteed (H, W, 3) uint8 array."""
-    image = Image.open(path).convert("RGB")
-    arr = np.array(image)
-    if arr.ndim == 2:
-        arr = np.stack([arr] * 3, axis=-1)
-    elif arr.shape[-1] != 3:
-        arr = arr[:, :, :3]
-    return arr
-
-
-# ============================================================
 # Dataset
 # ============================================================
 
@@ -309,6 +366,9 @@ class MultimodalColorDataset(Dataset):
         image_processor,
         max_len,
         valid_indices=None,
+        image_source="minio",
+        minio_bucket_images=None,
+        minio_image_prefix="",
     ):
         self.df = dataframe.reset_index(drop=True)
         self.encoded_labels = encoded_labels
@@ -317,6 +377,9 @@ class MultimodalColorDataset(Dataset):
         self.image_processor = image_processor
         self.max_len = max_len
         self.valid_indices = valid_indices or list(range(len(self.df)))
+        self.image_source = image_source
+        self.minio_bucket_images = minio_bucket_images
+        self.minio_image_prefix = minio_image_prefix
 
     def __len__(self):
         return len(self.valid_indices)
@@ -325,10 +388,15 @@ class MultimodalColorDataset(Dataset):
         real_idx = self.valid_indices[idx]
         row = self.df.iloc[real_idx]
         text = f"{row['item_name']} {row['item_caption']}"
-        img_path = os.path.join(self.img_dir, row["image_file_name"])
 
         try:
-            image_arr = load_image_as_rgb_array(img_path)
+            image_arr = load_image_as_rgb_array(
+                image_file_name=row["image_file_name"],
+                image_source=self.image_source,
+                img_dir=self.img_dir,
+                minio_bucket=self.minio_bucket_images,
+                minio_prefix=self.minio_image_prefix,
+            )
         except Exception:
             image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)
 
@@ -364,6 +432,9 @@ class InferenceDataset(Dataset):
         image_processor,
         max_len,
         valid_indices,
+        image_source="minio",
+        minio_bucket_images=None,
+        minio_image_prefix="",
     ):
         self.df = dataframe.reset_index(drop=True)
         self.img_dir = str(img_dir).rstrip("/")
@@ -371,6 +442,9 @@ class InferenceDataset(Dataset):
         self.image_processor = image_processor
         self.max_len = max_len
         self.valid_indices = valid_indices
+        self.image_source = image_source
+        self.minio_bucket_images = minio_bucket_images
+        self.minio_image_prefix = minio_image_prefix
 
     def __len__(self):
         return len(self.valid_indices)
@@ -379,10 +453,15 @@ class InferenceDataset(Dataset):
         real_idx = self.valid_indices[idx]
         row = self.df.iloc[real_idx]
         text = f"{row['item_name']} {row['item_caption']}"
-        img_path = os.path.join(self.img_dir, row["image_file_name"])
 
         try:
-            image_arr = load_image_as_rgb_array(img_path)
+            image_arr = load_image_as_rgb_array(
+                image_file_name=row["image_file_name"],
+                image_source=self.image_source,
+                img_dir=self.img_dir,
+                minio_bucket=self.minio_bucket_images,
+                minio_prefix=self.minio_image_prefix,
+            )
         except Exception:
             image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)
 
@@ -411,18 +490,27 @@ class InferenceDataset(Dataset):
 # Data / Eval Helpers
 # ============================================================
 
-def build_valid_indices(df, img_dir):
-    """Check which images exist and are loadable."""
+def build_valid_indices(
+    df,
+    img_dir,
+    image_source="minio",
+    minio_bucket_images=None,
+    minio_image_prefix="",
+):
+    """
+    Check which images exist and are loadable.
+    Works for both local files and MinIO objects.
+    """
     valid, skipped = [], 0
     for i, row in tqdm(df.iterrows(), total=len(df), desc="Validating images"):
-        path = os.path.join(str(img_dir), row["image_file_name"])
         try:
-            with Image.open(path) as im:
-                im.convert("RGB")
-                w, h = im.size
-            if w < 2 or h < 2:
-                skipped += 1
-                continue
+            _ = load_image_as_rgb_array(
+                image_file_name=row["image_file_name"],
+                image_source=image_source,
+                img_dir=img_dir,
+                minio_bucket=minio_bucket_images,
+                minio_prefix=minio_image_prefix,
+            )
             valid.append(i)
         except Exception:
             skipped += 1
@@ -512,11 +600,20 @@ def generate_predictions(
     threshold=0.3,
     min_preds=1,
     out_path=None,
+    image_source="minio",
+    minio_bucket_images=None,
+    minio_image_prefix="",
 ):
     """Run inference on a dataframe and save predictions CSV."""
     model.eval()
     df_reset = df_x.reset_index(drop=True)
-    valid_idx = build_valid_indices(df_reset, img_dir)
+    valid_idx = build_valid_indices(
+        df_reset,
+        img_dir,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket_images,
+        minio_image_prefix=minio_image_prefix,
+    )
 
     infer_ds = InferenceDataset(
         df_reset,
@@ -525,6 +622,9 @@ def generate_predictions(
         image_processor,
         max_len=max_len,
         valid_indices=valid_idx,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket_images,
+        minio_image_prefix=minio_image_prefix,
     )
 
     num_workers = min(4, os.cpu_count() or 1)
@@ -627,10 +727,31 @@ def train(config=None):
     print(f"  Train: {len(X_tr):,}  Val: {len(X_va):,}")
 
     img_dir = cfg["image_dir"]
+    image_source = cfg.get("image_source", IMAGE_SOURCE)
+    minio_bucket_images = cfg.get("minio_bucket_images", MINIO_BUCKET_IMAGES)
+    minio_image_prefix = cfg.get("minio_image_prefix", MINIO_IMAGE_PREFIX)
+
+    print(f"Image source: {image_source}")
+    if image_source == "minio":
+        print(f"  MinIO bucket: {minio_bucket_images}")
+        print(f"  MinIO prefix: {minio_image_prefix}")
+
     print("Validating training images...")
-    train_valid = build_valid_indices(X_tr.reset_index(drop=True), img_dir)
+    train_valid = build_valid_indices(
+        X_tr.reset_index(drop=True),
+        img_dir,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket_images,
+        minio_image_prefix=minio_image_prefix,
+    )
     print("Validating validation images...")
-    val_valid = build_valid_indices(X_va.reset_index(drop=True), img_dir)
+    val_valid = build_valid_indices(
+        X_va.reset_index(drop=True),
+        img_dir,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket_images,
+        minio_image_prefix=minio_image_prefix,
+    )
 
     train_ds = MultimodalColorDataset(
         X_tr,
@@ -640,6 +761,9 @@ def train(config=None):
         image_processor,
         max_len=cfg["max_len"],
         valid_indices=train_valid,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket_images,
+        minio_image_prefix=minio_image_prefix,
     )
     val_ds = MultimodalColorDataset(
         X_va,
@@ -649,9 +773,12 @@ def train(config=None):
         image_processor,
         max_len=cfg["max_len"],
         valid_indices=val_valid,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket_images,
+        minio_image_prefix=minio_image_prefix,
     )
 
-    num_workers = 1
+    num_workers = min(4, os.cpu_count() or 1)
     train_dl = DataLoader(
         train_ds,
         batch_size=cfg["batch_size"],
@@ -709,7 +836,10 @@ def train(config=None):
         "y_train_sha256": json_sha256(y_tr.tolist()),
         "y_val_sha256": json_sha256(y_va.tolist()),
         "config_sha256": json_sha256(cfg_clean),
+        "image_source": image_source,
         "image_dir": str(img_dir),
+        "minio_bucket_images": str(minio_bucket_images),
+        "minio_image_prefix": str(minio_image_prefix),
         "db_train_split": str(cfg["db_train"]),
         "val_ratio": float(cfg["val_ratio"]),
     }
@@ -735,6 +865,7 @@ def train(config=None):
             "device": device,
             "amp_enabled": str(use_amp),
             "previous_champion_exists": str(champion_version is not None),
+            "image_source": image_source,
         })
 
         log_json_artifact("data_manifest.json", data_manifest, artifact_path="metadata")
@@ -748,6 +879,9 @@ def train(config=None):
                 "registered_model_name": MLFLOW_REGISTERED_MODEL_NAME,
                 "champion_alias": MLFLOW_CHAMPION_ALIAS,
                 "candidate_alias": MLFLOW_CANDIDATE_ALIAS,
+                "image_source": image_source,
+                "minio_bucket_images": minio_bucket_images,
+                "minio_image_prefix": minio_image_prefix,
             },
             artifact_path="metadata",
         )
@@ -872,6 +1006,9 @@ def train(config=None):
             max_len=cfg["max_len"],
             threshold=cfg["val_threshold"],
             out_path=pred_path,
+            image_source=image_source,
+            minio_bucket_images=minio_bucket_images,
+            minio_image_prefix=minio_image_prefix,
         )
         mlflow.log_artifact(str(pred_path), artifact_path="predictions")
 
@@ -899,6 +1036,7 @@ def train(config=None):
                 "numpy",
                 "pandas",
                 "mlflow",
+                "boto3",
                 "fugashi",
                 "unidic-lite",
             ],
