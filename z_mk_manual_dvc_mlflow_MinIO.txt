@@ -78,7 +78,7 @@ sudo chmod -R 777 mlflow/
 
 
 dvc repro
-
+s
 git add dvc.lock params.yaml
 git commit -m "test: 1 epoch full pipeline run"
 git push origin
