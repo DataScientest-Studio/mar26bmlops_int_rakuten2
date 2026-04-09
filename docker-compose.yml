@@ -57,9 +57,7 @@ services:
       - mlops-net
 
   mlflow:
-    build:
-      context: .
-      dockerfile: mlflow/Dockerfile
+    image: ghcr.io/mlflow/mlflow:latest
     container_name: mlflow_server
     restart: unless-stopped
     depends_on:
@@ -88,18 +86,24 @@ services:
       --allowed-hosts ${MLFLOW_SERVER_ALLOWED_HOSTS}
       --cors-allowed-origins ${MLFLOW_SERVER_CORS_ALLOWED_ORIGINS}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=5)"
+        ]
       interval: 15s
-      timeout: 5s
+      timeout: 10s
       retries: 10
-      start_period: 20s
+      start_period: 30s
     networks:
       - mlops-net
 
   api:
     build:
       context: .
-      dockerfile: api/Dockerfile
+      dockerfile: src/api/Dockerfile
     container_name: rakuten_api
     restart: unless-stopped
     depends_on:
