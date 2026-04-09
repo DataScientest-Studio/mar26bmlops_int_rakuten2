@@ -3,7 +3,7 @@ venv/
 .venv/
 
 # dotenv
-.env
+
 .env2
 .env3
 .env4
@@ -60,3 +60,7 @@ models/*.sav
 
 # helper scripts not needed in repo
 z_helper_img.py
+
+db/
+*.db
+models/*.png
