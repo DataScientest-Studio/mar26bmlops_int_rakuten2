@@ -134,6 +134,8 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: rakuten_postgres
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: mlflow
       POSTGRES_PASSWORD: mlflow
@@ -147,7 +149,16 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # -- Nginx reverse proxy (public entry point) --
+
+  adminer:
+    image: adminer
+    container_name: rakuten_adminer
+    ports:
+      - "5050:8080"
+    restart: unless-stopped
+
+
+  # -- Nginx reverse proxy (public entry point for later) --
   # nginx:
   #   image: nginx:alpine
   #   container_name: rakuten_nginx
