@@ -1,7 +1,28 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: mlflow_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - mlops-net
+
   minio:
-    image: minio/minio
+    image: minio/minio:latest
+    container_name: mlflow_minio
     command: server /data --console-address ":9001"
+    restart: unless-stopped
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -10,41 +31,98 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - mlops-net
+
+  createbuckets:
+    image: minio/mc:latest
+    container_name: mlflow_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc mb -p local/${MINIO_BUCKET} || true &&
+      mc anonymous set private local/${MINIO_BUCKET} || true &&
+      exit 0
+      "
     networks:
       - mlops-net
 
   mlflow:
-    build: ./mlflow
+    build:
+      context: .
+      dockerfile: mlflow/Dockerfile
+    container_name: mlflow_server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
     ports:
       - "5000:5000"
     environment:
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-    depends_on:
-      - minio
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      MLFLOW_S3_IGNORE_TLS: ${MLFLOW_S3_IGNORE_TLS}
+      MLFLOW_SERVER_ALLOWED_HOSTS: ${MLFLOW_SERVER_ALLOWED_HOSTS}
+      MLFLOW_SERVER_CORS_ALLOWED_ORIGINS: ${MLFLOW_SERVER_CORS_ALLOWED_ORIGINS}
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      --default-artifact-root s3://${MINIO_BUCKET}
+      --allowed-hosts ${MLFLOW_SERVER_ALLOWED_HOSTS}
+      --cors-allowed-origins ${MLFLOW_SERVER_CORS_ALLOWED_ORIGINS}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - mlops-net
 
   api:
-    build: ./api   # Mirco will add this folder
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: rakuten_api
+    restart: unless-stopped
+    depends_on:
+      mlflow:
+        condition: service_healthy
     ports:
       - "8000:8000"
     environment:
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-    depends_on:
-      - minio
-      - mlflow
+      MLFLOW_REGISTERED_MODEL_NAME: ${MLFLOW_REGISTERED_MODEL_NAME}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      MLFLOW_S3_IGNORE_TLS: ${MLFLOW_S3_IGNORE_TLS}
     networks:
       - mlops-net
 
 volumes:
+  postgres_data:
   minio_data:
 
 networks:
   mlops-net:
+    driver: bridge

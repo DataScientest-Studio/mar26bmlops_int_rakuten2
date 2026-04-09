@@ -70,3 +70,19 @@ mlartifacts/
 mlruns/
 models/*.pth
 *.pth
+
+# MLflow / artifacts
+mlflow/
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Model weights
+*.pth
+*.pt
+*.ckpt
+
+# Local runtime DBs
+db/*.db
+*.sqlite
+*.sqlite3

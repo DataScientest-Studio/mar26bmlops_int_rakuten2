@@ -53,7 +53,7 @@ from src.config import (
 from src.db import save_predictions, get_conn, get_split_data
 
 # Import model classes so MLflow can deserialize the logged PyTorch model
-from src.models.train_model_ice_sql_mlflow import ICEModel  # noqa: F401
+from src.models.train_model_final import ICEModel
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 

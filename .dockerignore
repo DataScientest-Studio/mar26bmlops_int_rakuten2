@@ -13,11 +13,14 @@ __pycache__
 
 data
 models
-mlflow
+mlartifacts
+mlruns
 
 *.db
 *.sqlite
 *.sqlite3
+*.pth
+*.pt
 
 dist
 build
