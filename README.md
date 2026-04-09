@@ -28,7 +28,7 @@ Phase 1 includes:
     │
     ├── references         <- Data dictionaries and project materials
     │
-    ├── reports            <- Generated analyses and reports
+    <!-- ├── reports            <- Generated analyses and reports -->
     │   └── figures        <- Generated graphics and figures
     │
     ├── requirements.txt   <- Python dependencies

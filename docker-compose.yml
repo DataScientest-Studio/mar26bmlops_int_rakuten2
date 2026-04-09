@@ -50,17 +50,18 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
 
     command: >
+      bash -c "pip install psycopg2-binary --quiet &&
       mlflow server
-      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --backend-store-uri postgresql://mlflow:mlflow@postgres:5432/mlflow
       --default-artifact-root s3://mlflow-artifacts/
       --host 0.0.0.0
       --port 5000
-      --allowed-hosts "*"
-    volumes:
-      - ./mlflow:/mlflow
+      --allowed-hosts '*'"
     depends_on:
       minio_init:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
       interval: 15s
@@ -116,7 +117,6 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./db:/app/db
-      - ./mlflow:/mlflow
     shm_size: '4gb'
     deploy:
       resources:
@@ -128,6 +128,24 @@ services:
     command: python -m src.models.train_model_ice_mk
     profiles:
       - training
+
+
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rakuten_postgres
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   # -- Nginx reverse proxy (public entry point) --
   # nginx:
@@ -145,3 +163,4 @@ services:
 
 volumes:
   minio_data:  # Persistent MinIO storage
+  postgres_data:  # Persistent PostgreSQL storage
