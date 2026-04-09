@@ -11,9 +11,9 @@ import json
 import pandas as pd
 from pathlib import Path
 from contextlib import contextmanager
+from src.config import DATABASE_PATH
 
-SQLITE_PATH = os.getenv("SQLITE_PATH",
-    str(Path(__file__).resolve().parent.parent / "db" / "rakuten_colors.db"))
+SQLITE_PATH = str(DATABASE_PATH)
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
@@ -106,14 +106,22 @@ def _parse_color_tags(raw):
 def get_split_data(split="train"):
     with get_conn() as conn:
         df_x = pd.read_sql(
-            "SELECT image_file_name, item_name, item_caption FROM products WHERE split = ?",
+            """
+            SELECT id AS product_id, image_file_name, item_name, item_caption
+            FROM products
+            WHERE split = ?
+            ORDER BY id
+            """,
             conn, params=(split,)
         )
         df_y = pd.read_sql(
             """
-            SELECT p.id, GROUP_CONCAT(l.color_tag) as color_tags
-            FROM products p JOIN labels l ON l.product_id = p.id
-            WHERE p.split = ? GROUP BY p.id
+            SELECT p.id AS product_id, GROUP_CONCAT(l.color_tag) AS color_tags
+            FROM products p
+            JOIN labels l ON l.product_id = p.id
+            WHERE p.split = ?
+            GROUP BY p.id
+            ORDER BY p.id
             """,
             conn, params=(split,)
         )
@@ -122,10 +130,14 @@ def get_split_data(split="train"):
 
 
 def get_products(split="test"):
-    """Nur Produkte, ohne Labels — für Test-Split."""
     with get_conn() as conn:
         df = pd.read_sql(
-            "SELECT image_file_name, item_name, item_caption FROM products WHERE split = ?",
+            """
+            SELECT id AS product_id, image_file_name, item_name, item_caption
+            FROM products
+            WHERE split = ?
+            ORDER BY id
+            """,
             conn, params=(split,)
         )
     return df

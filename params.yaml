@@ -1,6 +1,5 @@
 ICE_CONFIG:
   batch_size: 128
-  db_train: train
   encoder_lr: 2.0e-05
   es_patience: 3
   learning_rate: 0.003

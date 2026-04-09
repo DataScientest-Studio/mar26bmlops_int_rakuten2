@@ -70,36 +70,29 @@ CLIP_CONFIG = {
 # ──────────────────────────────────────────────────────────────
 # ICE (Image-Caption Ensemble)
 # ──────────────────────────────────────────────────────────────
+IMAGE_DIR = Path(os.getenv("IMAGE_DIR", DATA_DIR / "images"))
 ICE_CONFIG = {
-    # Models
     "text_model_id": os.getenv("TEXT_MODEL_ID", "cl-tohoku/bert-base-japanese-v3"),
     "vision_model_id": os.getenv("VISION_MODEL_ID", "openai/clip-vit-base-patch16"),
-
-    # Training
     "batch_size": int(os.getenv("ICE_BATCH_SIZE", "128")),
     "learning_rate": float(os.getenv("ICE_LR", "3e-3")),
     "encoder_lr": float(os.getenv("ICE_ENCODER_LR", "2e-5")),
     "max_epochs": int(os.getenv("ICE_MAX_EPOCHS", "15")),
     "unfreeze_layers": int(os.getenv("ICE_UNFREEZE_LAYERS", "2")),
     "es_patience": int(os.getenv("ICE_ES_PATIENCE", "3")),
-
-    # Thresholds
+    "es_min_delta": float(os.getenv("ICE_ES_MIN_DELTA", "1e-4")),
     "val_threshold": float(os.getenv("ICE_VAL_THRESHOLD", "0.5")),
     "train_threshold": float(os.getenv("ICE_TRAIN_THRESHOLD", "0.5")),
-
-    # Data
     "max_len": int(os.getenv("ICE_MAX_LEN", "128")),
     "image_dir": Path(os.getenv("IMAGE_DIR", str(DATA_DIR / "images"))),
     "db_train": os.getenv("DB_TRAIN_SPLIT", "train"),
-    "predict_split": os.getenv("PREDICT_SPLIT", "val"),
+    "db_val": os.getenv("DB_VAL_SPLIT", "val"),
+    "predict_split": os.getenv("PREDICT_SPLIT", "test"),
     "val_ratio": float(os.getenv("VAL_RATIO", "0.1")),
-
-    # Outputs
     "checkpoint_path": MODEL_DIR / "color_model_best.pth",
     "mlb_path": MODEL_DIR / "mlb.pkl",
     "predictions_path": MODEL_DIR / "y_pred_training.csv",
 }
-
 # ──────────────────────────────────────────────────────────────
 # ENSEMBLE (optional future)
 # ──────────────────────────────────────────────────────────────
