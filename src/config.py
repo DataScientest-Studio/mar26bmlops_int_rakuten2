@@ -117,7 +117,10 @@ ICE_CONFIG = {
 
     # Data
     "max_len": int(os.getenv("ICE_MAX_LEN", "128")),
-    "image_dir": Path(os.getenv("IMAGE_DIR", str(DATA_DIR / "images"))),
+    "image_dir": IMAGE_DIR,
+    "image_source": IMAGE_SOURCE,
+    "minio_bucket_images": MINIO_BUCKET_IMAGES,
+    "minio_image_prefix": MINIO_IMAGE_PREFIX,
     "db_train": os.getenv("DB_TRAIN_SPLIT", "train"),
     "predict_split": os.getenv("PREDICT_SPLIT", "val"),
     "val_ratio": float(os.getenv("VAL_RATIO", "0.1")),

@@ -128,3 +128,9 @@ Oder sauberer — in die .env Datei:
 bashAWS_ACCESS_KEY_ID=minioadmin
 AWS_SECRET_ACCESS_KEY=minioadmin
 MLFLOW_S3_ENDPOINT_URL=http://localhost:9000
+
+
+mc alias set local http://localhost:9000 minioadmin minioadmin
+mc cp data/raw/X_train.csv local/rakuten-images/
+mc cp data/raw/y_train.csv local/rakuten-images/
+mc cp data/raw/X_test.csv local/rakuten-images/
