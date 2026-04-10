@@ -64,6 +64,7 @@ models/*.sav
 z_helper_img.py
 
 # mk 
+# test
 db/
 *.db
 models/*.png
