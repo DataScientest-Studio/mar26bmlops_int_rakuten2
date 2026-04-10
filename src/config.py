@@ -11,15 +11,18 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+
 # ──────────────────────────────────────────────────────────────
-# ENV
+# ENV + Data
 # ──────────────────────────────────────────────────────────────
 load_dotenv()
+
 
 # ──────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 DATA_DIR = PROJECT_ROOT / "data"
 MODEL_DIR = PROJECT_ROOT / "models"
@@ -29,6 +32,31 @@ DB_DIR = PROJECT_ROOT / "db"
 # Ensure folders exist
 for d in [DATA_DIR, MODEL_DIR, SUBMIT_DIR, DB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
+# ──────────────────────────────────────────────────────────────
+# MINIO / OBJECT STORAGE  (merged from VR branch)
+# ──────────────────────────────────────────────────────────────
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ROOT_USER = os.getenv("MINIO_ROOT_USER", "minioadmin")
+MINIO_ROOT_PASSWORD = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+ 
+MINIO_BUCKET_DATA = os.getenv("MINIO_BUCKET_DATA", "data")
+MINIO_BUCKET_IMAGES = os.getenv("MINIO_BUCKET_IMAGES", "images")
+ 
+MINIO_X_TRAIN_KEY = os.getenv("MINIO_X_TRAIN_KEY", "X_train.csv")
+MINIO_Y_TRAIN_KEY = os.getenv("MINIO_Y_TRAIN_KEY", "y_train.csv")
+MINIO_X_TEST_KEY = os.getenv("MINIO_X_TEST_KEY", "X_test.csv")
+MINIO_Y_RANDOM_KEY = os.getenv("MINIO_Y_RANDOM_KEY", "y_random.csv")
+ 
+# Image loading control: "minio" = stream from S3, "local" = read from disk
+IMAGE_SOURCE = os.getenv("IMAGE_SOURCE", "local").lower()   # "minio" or "local"
+MINIO_IMAGE_PREFIX = os.getenv("MINIO_IMAGE_PREFIX", "")    # e.g. "train_images/"
+IMAGE_DIR = Path(os.getenv("IMAGE_DIR", str(DATA_DIR / "images")))
+ 
+MINIO_HTTP_ENDPOINT = f"http://{MINIO_ENDPOINT}"
+MINIO_DATA_BASE_URI = f"s3://{MINIO_BUCKET_DATA}"
+
+
 
 # ──────────────────────────────────────────────────────────────
 # COLOR LABELS
@@ -132,6 +160,10 @@ MLFLOW_REGISTERED_MODEL_NAME = os.getenv(
 MLFLOW_CHAMPION_ALIAS = os.getenv("MLFLOW_CHAMPION_ALIAS", "champion")
 MLFLOW_CANDIDATE_ALIAS = os.getenv("MLFLOW_CANDIDATE_ALIAS", "candidate")
 
+MLFLOW_S3_ENDPOINT_URL = os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://minio:9000")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", MINIO_ROOT_USER)
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", MINIO_ROOT_PASSWORD)
+
 # ──────────────────────────────────────────────────────────────
 # APP ENV
 # ──────────────────────────────────────────────────────────────
@@ -146,15 +178,28 @@ MODEL_STAGE = os.getenv("MODEL_STAGE", "Production")
 
 
 import yaml  # pip install pyyaml if missing
-
+ 
 def export_params():
     """Sync params.yaml for DVC — called automatically by pipeline."""
     params = {
         "ICE_CONFIG": {
-            k: v for k, v in ICE_CONFIG.items()
-            if isinstance(v, (str, int, float, bool))
-            # Skips Path objects — not serializable in YAML
-        }
+            k: (str(v) if isinstance(v, Path) else v)
+            for k, v in ICE_CONFIG.items()
+            if isinstance(v, (str, int, float, bool, Path))
+        },
+        "MINIO_CONFIG": {
+            "endpoint": MINIO_ENDPOINT,
+            "bucket_data": MINIO_BUCKET_DATA,
+            "bucket_images": MINIO_BUCKET_IMAGES,
+            "image_source": IMAGE_SOURCE,
+            "image_prefix": MINIO_IMAGE_PREFIX,
+        },
+        "MLFLOW_CONFIG": {
+            "tracking_uri": MLFLOW_TRACKING_URI,
+            "experiment": MLFLOW_EXPERIMENT,
+            "registered_model_name": MLFLOW_REGISTERED_MODEL_NAME,
+            "s3_endpoint_url": MLFLOW_S3_ENDPOINT_URL,
+        },
     }
-    with open(PROJECT_ROOT / "params.yaml", "w") as f:
-        yaml.dump(params, f, default_flow_style=False)
+    with open(PROJECT_ROOT / "params.yaml", "w", encoding="utf-8") as f:
+        yaml.dump(params, f, default_flow_style=False, sort_keys=False)

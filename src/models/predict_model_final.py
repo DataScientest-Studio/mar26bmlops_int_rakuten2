@@ -49,11 +49,18 @@ from src.config import (
     MLFLOW_REGISTERED_MODEL_NAME,
     MLFLOW_CHAMPION_ALIAS,
     MLFLOW_CANDIDATE_ALIAS,
+    MINIO_ENDPOINT,
+    MINIO_ROOT_USER,
+    MINIO_ROOT_PASSWORD,
 )
 from src.db import save_predictions, get_conn, get_split_data
 
 # Import model classes so MLflow can deserialize the logged PyTorch model
-from src.models.train_model_final import ICEModel
+from src.models.train_model_final import (
+    ICEModel,
+    load_image_as_rgb_array,
+    build_valid_indices,
+)
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -71,46 +78,22 @@ def ensure_min_predictions(probs: torch.Tensor, threshold: float, min_preds: int
     return preds
 
 
-def load_image_as_rgb_array(path: str) -> np.ndarray:
-    image = Image.open(path).convert("RGB")
-    arr = np.array(image)
-    if arr.ndim == 2:
-        arr = np.stack([arr] * 3, axis=-1)
-    elif arr.shape[-1] != 3:
-        arr = arr[:, :, :3]
-    return arr
-
-
-def build_valid_invalid(df: pd.DataFrame, img_dir: str):
-    valid, invalid = [], []
-    for i, row in tqdm(df.iterrows(), total=len(df), desc="Validating images"):
-        path = os.path.join(str(img_dir), row["image_file_name"])
-        try:
-            with Image.open(path) as im:
-                im.convert("RGB")
-                w, h = im.size
-            if w < 2 or h < 2:
-                invalid.append(i)
-                continue
-            valid.append(i)
-        except Exception:
-            invalid.append(i)
-    print(f"  {len(valid)} valid, {len(invalid)} skipped")
-    return valid, invalid
-
-
 # ============================================================
 # Dataset
 # ============================================================
 
 class SQLInferenceDataset(Dataset):
-    def __init__(self, dataframe, img_dir, tokenizer, image_processor, max_len, valid_indices=None):
+    def __init__(self, dataframe, img_dir, tokenizer, image_processor, max_len,
+                 valid_indices=None, image_source="local", minio_bucket_images=None, minio_image_prefix=""):
         self.df = dataframe.reset_index(drop=True)
         self.img_dir = str(img_dir).rstrip("/")
         self.tokenizer = tokenizer
         self.image_processor = image_processor
         self.max_len = max_len
         self.valid_indices = valid_indices or list(range(len(self.df)))
+        self.image_source = image_source
+        self.minio_bucket_images = minio_bucket_images
+        self.minio_image_prefix = minio_image_prefix
 
     def __len__(self):
         return len(self.valid_indices)
@@ -120,10 +103,15 @@ class SQLInferenceDataset(Dataset):
         row = self.df.iloc[real_idx]
 
         text = f"{row['item_name']} {row['item_caption']}"
-        img_path = os.path.join(self.img_dir, row["image_file_name"])
 
         try:
-            image_arr = load_image_as_rgb_array(img_path)
+            image_arr = load_image_as_rgb_array(
+                image_file_name=row["image_file_name"],
+                image_source=self.image_source,
+                img_dir=self.img_dir,
+                minio_bucket=self.minio_bucket_images,
+                minio_prefix=self.minio_image_prefix,
+            )
         except Exception:
             image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)
 
@@ -294,7 +282,13 @@ def predict(
     print(f"  {len(df_test):,} rows")
 
     img_dir = ICE_CONFIG["image_dir"]
-    valid_idx, invalid_idx = build_valid_invalid(df_test.reset_index(drop=True), img_dir)
+    image_source = ICE_CONFIG.get("image_source", "local")
+    minio_bucket = ICE_CONFIG.get("minio_bucket_images")
+    minio_prefix = ICE_CONFIG.get("minio_image_prefix", "")
+
+    print(f"Image source: {image_source}" + (f" (bucket={minio_bucket})" if image_source == "minio" else f" ({img_dir})"))
+    valid_idx = build_valid_indices(df_test.reset_index(drop=True), img_dir, image_source, minio_bucket, minio_prefix)
+    invalid_idx = [i for i in range(len(df_test)) if i not in set(valid_idx)]
 
     infer_ds = SQLInferenceDataset(
         dataframe=df_test,
@@ -303,6 +297,9 @@ def predict(
         image_processor=image_processor,
         max_len=ICE_CONFIG["max_len"],
         valid_indices=valid_idx,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket,
+        minio_image_prefix=minio_prefix,
     )
 
     infer_loader = DataLoader(

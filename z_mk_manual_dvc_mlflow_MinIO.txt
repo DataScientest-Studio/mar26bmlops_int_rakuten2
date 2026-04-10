@@ -1,3 +1,5 @@
+git archive --format=zip --output=projekt_snapshot.zip HEAD
+
 # 1. tracking:
 dvc add models/color_model_best.pth models/mlb.pkl
 

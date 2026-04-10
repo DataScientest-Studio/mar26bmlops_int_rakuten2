@@ -45,6 +45,9 @@ import mlflow
 import mlflow.pytorch
 from mlflow.tracking import MlflowClient
 
+import boto3
+from io import BytesIO
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.config import (
@@ -55,6 +58,10 @@ from src.config import (
     MLFLOW_REGISTERED_MODEL_NAME,
     MLFLOW_CHAMPION_ALIAS,
     MLFLOW_CANDIDATE_ALIAS,
+    MINIO_ENDPOINT,
+    MINIO_ROOT_USER,
+    MINIO_ROOT_PASSWORD,
+    IMAGE_SOURCE,
 )
 from src.db import get_split_data, save_run
 
@@ -304,7 +311,37 @@ class EarlyStopping:
 # Dataset
 # ============================================================
 
-def load_image_as_rgb_array(path: str) -> np.ndarray:
+# ============================================================
+# MinIO helpers  (merged from VR branch)
+# ============================================================
+
+_MINIO_CLIENT = None
+
+
+def get_minio_client():
+    """Singleton boto3 S3 client for MinIO."""
+    global _MINIO_CLIENT
+    if _MINIO_CLIENT is None:
+        _MINIO_CLIENT = boto3.client(
+            "s3",
+            endpoint_url=f"http://{MINIO_ENDPOINT}",
+            aws_access_key_id=MINIO_ROOT_USER,
+            aws_secret_access_key=MINIO_ROOT_PASSWORD,
+        )
+    return _MINIO_CLIENT
+
+
+def build_image_key(image_file_name: str, prefix: str = "") -> str:
+    """Build the S3 object key from filename and optional prefix."""
+    prefix = (prefix or "").strip("/")
+    image_file_name = str(image_file_name).lstrip("/")
+    if prefix:
+        return f"{prefix}/{image_file_name}"
+    return image_file_name
+
+
+def load_image_as_rgb_array_local(path: str) -> np.ndarray:
+    """Load image from local filesystem."""
     image = Image.open(path).convert("RGB")
     arr = np.array(image)
     if arr.ndim == 2:
@@ -314,17 +351,56 @@ def load_image_as_rgb_array(path: str) -> np.ndarray:
     return arr
 
 
-def build_valid_indices(df, img_dir):
+def load_image_as_rgb_array_minio(bucket: str, key: str) -> np.ndarray:
+    """Load image by streaming from MinIO S3."""
+    s3 = get_minio_client()
+    obj = s3.get_object(Bucket=bucket, Key=key)
+    image = Image.open(BytesIO(obj["Body"].read())).convert("RGB")
+    arr = np.array(image)
+    if arr.ndim == 2:
+        arr = np.stack([arr] * 3, axis=-1)
+    elif arr.shape[-1] != 3:
+        arr = arr[:, :, :3]
+    return arr
+
+
+def load_image_as_rgb_array(
+    image_file_name: str,
+    image_source: str = "local",
+    img_dir: str | None = None,
+    minio_bucket: str | None = None,
+    minio_prefix: str = "",
+) -> np.ndarray:
+    """Dispatcher: load image from MinIO or local depending on image_source."""
+    if image_source == "minio":
+        key = build_image_key(image_file_name, minio_prefix)
+        return load_image_as_rgb_array_minio(minio_bucket, key)
+
+    img_path = os.path.join(str(img_dir).rstrip("/"), image_file_name)
+    return load_image_as_rgb_array_local(img_path)
+
+
+def build_valid_indices(
+    df,
+    img_dir,
+    image_source="local",
+    minio_bucket_images=None,
+    minio_image_prefix="",
+):
+    """
+    Check which images exist and are loadable.
+    Works for both local files and MinIO objects.
+    """
     valid, skipped = [], 0
     for i, row in tqdm(df.iterrows(), total=len(df), desc="Validating images"):
-        path = os.path.join(str(img_dir), row["image_file_name"])
         try:
-            with Image.open(path) as im:
-                im.convert("RGB")
-                w, h = im.size
-            if w < 2 or h < 2:
-                skipped += 1
-                continue
+            _ = load_image_as_rgb_array(
+                image_file_name=row["image_file_name"],
+                image_source=image_source,
+                img_dir=img_dir,
+                minio_bucket=minio_bucket_images,
+                minio_prefix=minio_image_prefix,
+            )
             valid.append(i)
         except Exception:
             skipped += 1
@@ -333,7 +409,8 @@ def build_valid_indices(df, img_dir):
 
 
 class MultimodalColorDataset(Dataset):
-    def __init__(self, dataframe, encoded_labels, img_dir, tokenizer, image_processor, max_len, valid_indices=None):
+    def __init__(self, dataframe, encoded_labels, img_dir, tokenizer, image_processor, max_len,
+                 valid_indices=None, image_source="local", minio_bucket_images=None, minio_image_prefix=""):
         self.df = dataframe.reset_index(drop=True)
         self.encoded_labels = encoded_labels
         self.img_dir = str(img_dir).rstrip("/")
@@ -341,6 +418,9 @@ class MultimodalColorDataset(Dataset):
         self.image_processor = image_processor
         self.max_len = max_len
         self.valid_indices = valid_indices or list(range(len(self.df)))
+        self.image_source = image_source
+        self.minio_bucket_images = minio_bucket_images
+        self.minio_image_prefix = minio_image_prefix
 
     def __len__(self):
         return len(self.valid_indices)
@@ -349,10 +429,15 @@ class MultimodalColorDataset(Dataset):
         real_idx = self.valid_indices[idx]
         row = self.df.iloc[real_idx]
         text = f"{row['item_name']} {row['item_caption']}"
-        img_path = os.path.join(self.img_dir, row["image_file_name"])
 
         try:
-            image_arr = load_image_as_rgb_array(img_path)
+            image_arr = load_image_as_rgb_array(
+                image_file_name=row["image_file_name"],
+                image_source=self.image_source,
+                img_dir=self.img_dir,
+                minio_bucket=self.minio_bucket_images,
+                minio_prefix=self.minio_image_prefix,
+            )
         except Exception:
             image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)
 
@@ -522,18 +607,25 @@ def train(config=None):
     )
 
     img_dir = cfg["image_dir"]
+    image_source = cfg.get("image_source", "local")
+    minio_bucket = cfg.get("minio_bucket_images")
+    minio_prefix = cfg.get("minio_image_prefix", "")
+
+    print(f"Image source: {image_source}" + (f" (bucket={minio_bucket})" if image_source == "minio" else f" ({img_dir})"))
     print("Validating training images...")
-    train_valid = build_valid_indices(X_tr, img_dir)
+    train_valid = build_valid_indices(X_tr, img_dir, image_source, minio_bucket, minio_prefix)
     print("Validating validation images...")
-    val_valid = build_valid_indices(X_va, img_dir)
+    val_valid = build_valid_indices(X_va, img_dir, image_source, minio_bucket, minio_prefix)
 
     train_ds = MultimodalColorDataset(
         X_tr, y_tr, img_dir, tokenizer, image_processor,
-        max_len=cfg["max_len"], valid_indices=train_valid
+        max_len=cfg["max_len"], valid_indices=train_valid,
+        image_source=image_source, minio_bucket_images=minio_bucket, minio_image_prefix=minio_prefix,
     )
     val_ds = MultimodalColorDataset(
         X_va, y_va, img_dir, tokenizer, image_processor,
-        max_len=cfg["max_len"], valid_indices=val_valid
+        max_len=cfg["max_len"], valid_indices=val_valid,
+        image_source=image_source, minio_bucket_images=minio_bucket, minio_image_prefix=minio_prefix,
     )
 
     num_workers = 1

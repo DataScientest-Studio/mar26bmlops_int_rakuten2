@@ -12,7 +12,7 @@ from typing import Optional
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.config import COLOR_LABELS, NUM_LABELS, MODEL_DIR, ICE_CONFIG
+from src.config import COLOR_LABELS, NUM_LABELS, MODEL_DIR, ICE_CONFIG, IMAGE_SOURCE
 
 
 COLOR_KEYWORDS: dict[str, list[str]] = {
@@ -149,13 +149,21 @@ class ModelService:
             max_length=ICE_CONFIG.get("max_len", 128), truncation=True,
         )
 
-        if image_path and Path(image_path).exists():
+        image_arr = None
+        if image_path:
             try:
                 from src.models.train_model_final import load_image_as_rgb_array
-                image_arr = load_image_as_rgb_array(image_path)
+                image_arr = load_image_as_rgb_array(
+                    image_file_name=Path(image_path).name,
+                    image_source=ICE_CONFIG.get("image_source", "local"),
+                    img_dir=str(Path(image_path).parent),
+                    minio_bucket=ICE_CONFIG.get("minio_bucket_images"),
+                    minio_prefix=ICE_CONFIG.get("minio_image_prefix", ""),
+                )
             except Exception:
-                image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)
-        else:
+                image_arr = None
+
+        if image_arr is None:
             image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)
 
         img_enc = self._ice_image_processor(
