@@ -20,7 +20,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import (
-    COLOR_LABELS, DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
+    DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
 )
 from src.data.load_data_s3 import load_all_data
 from src.db import init_db, ingest_products, get_db_summary, save_predictions, clear_products

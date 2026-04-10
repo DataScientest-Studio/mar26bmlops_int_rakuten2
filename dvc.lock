@@ -25,8 +25,8 @@ stages:
       size: 6563
     - path: src/pipeline.py
       hash: md5
-      md5: 19dbae9d76d08d932ca9995086290de6
-      size: 6060
+      md5: a9a0a1e7ee962b62caee875d5e275e2a
+      size: 5890
     outs:
     - path: db/rakuten.db
       hash: md5

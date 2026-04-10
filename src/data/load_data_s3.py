@@ -1,3 +1,4 @@
+# src.data.load_data_s3.py
 """
 Data loading with local / MinIO toggle.
 
@@ -21,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.config import (
     DATA_DIR,
-    IMAGE_SOURCE,
+    DATA_SOURCE,
     MINIO_ENDPOINT,
     MINIO_ROOT_USER,
     MINIO_ROOT_PASSWORD,
@@ -82,7 +83,7 @@ def load_all_data(source: str | None = None):
     Returns:
         (df_x, df_y, df_test) — raw DataFrames, no preprocessing.
     """
-    source = (source or IMAGE_SOURCE).lower()
+    source = (source or DATA_SOURCE).lower()
 
     if source == "minio":
         print("\n[Data] Loading CSVs from MinIO...")

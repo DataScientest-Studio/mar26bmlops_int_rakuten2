@@ -1,15 +1,33 @@
 ICE_CONFIG:
-  batch_size: 128
-  db_train: train
-  encoder_lr: 2.0e-05
-  es_patience: 3
-  learning_rate: 0.003
-  max_epochs: 1
-  max_len: 128
-  predict_split: val
   text_model_id: cl-tohoku/bert-base-japanese-v3
-  train_threshold: 0.5
-  unfreeze_layers: 2
-  val_ratio: 0.1
-  val_threshold: 0.5
   vision_model_id: openai/clip-vit-base-patch16
+  batch_size: 128
+  learning_rate: 0.003
+  encoder_lr: 2.0e-05
+  max_epochs: 1
+  unfreeze_layers: 2
+  es_patience: 3
+  val_threshold: 0.5
+  train_threshold: 0.5
+  max_len: 128
+  image_dir: /home/mirco/rakuten2/data/images
+  image_source: minio
+  minio_bucket_images: rakuten-images
+  minio_image_prefix: ''
+  db_train: train
+  predict_split: val
+  val_ratio: 0.1
+  checkpoint_path: /home/mirco/rakuten2/models/color_model_best.pth
+  mlb_path: /home/mirco/rakuten2/models/mlb.pkl
+  predictions_path: /home/mirco/rakuten2/models/y_pred_training.csv
+MINIO_CONFIG:
+  endpoint: localhost:9000
+  bucket_data: rakuten-data
+  bucket_images: rakuten-images
+  image_source: minio
+  image_prefix: ''
+MLFLOW_CONFIG:
+  tracking_uri: http://localhost:5000
+  experiment: rakuten_color_extraction
+  registered_model_name: rakuten-ice-dual-encoder
+  s3_endpoint_url: http://localhost:9000

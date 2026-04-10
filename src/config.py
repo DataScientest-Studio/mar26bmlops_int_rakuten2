@@ -36,7 +36,7 @@ for d in [DATA_DIR, MODEL_DIR, SUBMIT_DIR, DB_DIR]:
 # ──────────────────────────────────────────────────────────────
 # MINIO / OBJECT STORAGE  (merged from VR branch)
 # ──────────────────────────────────────────────────────────────
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ROOT_USER = os.getenv("MINIO_ROOT_USER", "minioadmin")
 MINIO_ROOT_PASSWORD = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
  
@@ -50,6 +50,7 @@ MINIO_Y_RANDOM_KEY = os.getenv("MINIO_Y_RANDOM_KEY", "y_random.csv")
  
 # Image loading control: "minio" = stream from S3, "local" = read from disk
 IMAGE_SOURCE = os.getenv("IMAGE_SOURCE", "local").lower()   # "minio" or "local"
+DATA_SOURCE = os.getenv("DATA_SOURCE", "local").lower()     # "minio" or "local"
 MINIO_IMAGE_PREFIX = os.getenv("MINIO_IMAGE_PREFIX", "")    # e.g. "train_images/"
 IMAGE_DIR = Path(os.getenv("IMAGE_DIR", str(DATA_DIR / "images")))
  
@@ -183,7 +184,7 @@ MODEL_STAGE = os.getenv("MODEL_STAGE", "Production")
 import yaml  # pip install pyyaml if missing
  
 def export_params():
-    """Sync params.yaml for DVC — called automatically by pipeline."""
+    """Sync params.yaml for DVC - called automatically by pipeline."""
     params = {
         "ICE_CONFIG": {
             k: (str(v) if isinstance(v, Path) else v)

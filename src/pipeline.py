@@ -20,11 +20,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import (
-    COLOR_LABELS, DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
+    DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
 )
-from src.db import init_db, ingest_products, get_db_summary, save_predictions, clear_products
+from src.db import init_db, ingest_products, get_db_summary, clear_products
 from src.models.train_model_final import train
 from src.models.predict_model_final import predict
+from src.data.load_data_s3 import load_all_data
 
 
 
@@ -44,12 +45,8 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
     print(f"  Mode: {mode} | Data: {'real' if real else 'mock'} | Mission: {mission_mode}")
     print("=" * 60)
 
-    # -- 1. Load data --
-    print("\n[1/6] Loading data...")
-    df_x    = pd.read_csv(DATA_DIR / "raw" / "X_train.csv")
-    df_y    = pd.read_csv(DATA_DIR / "raw" / "y_train.csv")
-    df_test = pd.read_csv(DATA_DIR / "raw" / "X_test.csv")
-    print(f"  Train: {len(df_x)}, Test: {len(df_test)}")
+    # -- 1. Load data -- (local or Minio, controlled by IMAGE_SOURCE)
+    df_x, df_y, df_test = load_all_data()
 
     # -- 2. Train/Val split (dev mode only) --
     if not mission_mode:
