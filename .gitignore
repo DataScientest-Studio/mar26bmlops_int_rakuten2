@@ -62,7 +62,12 @@ models/*.sav
 # helper scripts not needed in repo
 z_helper_img.py
 
+# mk 
 db/
 *.db
 models/*.png
 z_mk_manual_dvc_mlflow_MinIO.txt
+data/images_NFkV58V.tar
+projekt_snapshot.zip
+*.zip
++*.tar
