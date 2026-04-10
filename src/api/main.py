@@ -20,8 +20,9 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
@@ -78,6 +79,40 @@ def _build_scores(result: dict) -> list[ColorScore]:
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 def predict_colors(request: PredictRequest, service: ModelService = Depends(model_dep)):
     result = service.predict(request.item_name, request.item_caption, request.image_path)
+    return PredictionResponse(
+        predicted_colors=result["predicted"],
+        all_scores=_build_scores(result),
+        model_type=result["model_type"],
+        inference_ms=result["inference_ms"],
+    )
+
+
+
+@app.post("/predict/upload", response_model=PredictionResponse, tags=["Prediction"])
+async def predict_with_upload(
+    item_name: str,
+    item_caption: str,
+    image: UploadFile = File(None),
+    service: ModelService = Depends(model_dep),
+):
+    import tempfile, shutil
+
+    image_path = None
+
+    # Bild temporär speichern falls mitgegeben
+    if image is not None:
+        suffix = Path(image.filename).suffix or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(image.file, tmp)
+            image_path = tmp.name
+
+    try:
+        result = service.predict(item_name, item_caption, image_path)
+    finally:
+        # Temp-Datei aufräumen
+        if image_path:
+            Path(image_path).unlink(missing_ok=True)
+
     return PredictionResponse(
         predicted_colors=result["predicted"],
         all_scores=_build_scores(result),

@@ -1,7 +1,8 @@
 """
 Model service with automatic fallback chain:
-  1. ICE DualEncoder (text + image)
-  2. Keyword matcher (always available)
+  1. ICE DualEncoder from MLflow Registry (champion alias)
+  2. ICE DualEncoder from local checkpoint (fallback)
+  3. Keyword matcher (always available)
 """
 import time
 import pickle
@@ -12,30 +13,33 @@ from typing import Optional
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.config import COLOR_LABELS, NUM_LABELS, MODEL_DIR, ICE_CONFIG, IMAGE_SOURCE
+from src.config import (
+    COLOR_LABELS, NUM_LABELS, MODEL_DIR, ICE_CONFIG,
+    MLFLOW_TRACKING_URI, MLFLOW_REGISTERED_MODEL_NAME, MLFLOW_CHAMPION_ALIAS,
+    IMAGE_SOURCE,
+)
 
 
 COLOR_KEYWORDS: dict[str, list[str]] = {
-    "Black":    ["black", "noir", "schwarz", "nero", "negro"],
-    "White":    ["white", "blanc", "weiss", "weiß", "bianco", "blanco"],
-    "Grey":     ["grey", "gray", "gris", "grau", "grigio"],
-    "Navy":     ["navy", "marine", "dunkelblau"],
-    "Blue":     ["blue", "bleu", "blau", "blu", "azul"],
-    "Red":      ["red", "rouge", "rot", "rosso", "rojo"],
-    "Pink":     ["pink", "rose", "rosa"],
-    "Brown":    ["brown", "marron", "braun", "marrone"],
-    "Beige":    ["beige", "creme", "cream", "ecru", "sand"],
-    "Green":    ["green", "vert", "grün", "gruen", "verde"],
-    "Khaki":    ["khaki", "kaki", "olive", "oliv"],
-    "Orange":   ["orange", "orangé"],
-    "Yellow":   ["yellow", "jaune", "gelb", "giallo"],
-    "Purple":   ["purple", "violet", "lila", "violett", "viola"],
-    "Burgundy": ["burgundy", "bordeaux", "weinrot", "maroon"],
-    "Gold":     ["gold", "golden", "doré"],
-    "Silver":   ["silver", "silber", "argent"],
-    "Transparent": ["transparent", "clear", "durchsichtig", "translucent"],
-    "Multiple Colors": ["multicolor", "multi-color", "bunt", "colorful",
-                        "rainbow", "multicolore", "mehrfarbig"],
+    "Black":    ["ブラック", "黒", "ブラク", "black", "BLACK", "Black"],
+    "White":    ["ホワイト", "白", "white", "WHITE", "White"],
+    "Grey":     ["グレー", "グレイ", "灰", "グレ", "gray", "grey", "GRAY", "GREY", "Gray", "Grey"],
+    "Navy":     ["ネイビー", "紺", "ネービー", "navy", "NAVY", "Navy"],
+    "Blue":     ["ブルー", "青", "ブル", "blue", "BLUE", "Blue"],
+    "Red":      ["レッド", "赤", "red", "RED", "Red"],
+    "Pink":     ["ピンク", "pink", "PINK", "Pink"],
+    "Brown":    ["ブラウン", "茶", "ダークブラウン", "ライトブラウン", "brown", "BROWN", "Brown"],
+    "Beige":    ["ベージュ", "beige", "BEIGE", "Beige"],
+    "Green":    ["グリーン", "緑", "カーキグリーン", "green", "GREEN", "Green"],
+    "Khaki":    ["カーキ", "khaki", "KHAKI", "Khaki"],
+    "Orange":   ["オレンジ", "orange", "ORANGE", "Orange"],
+    "Yellow":   ["イエロー", "黄", "イエロ", "yellow", "YELLOW", "Yellow"],
+    "Purple":   ["パープル", "紫", "バイオレット", "purple", "PURPLE", "Purple"],
+    "Burgundy": ["バーガンディ", "ボルドー", "bordo", "burgundy", "BURGUNDY", "Burgundy"],
+    "Gold":     ["ゴールド", "金", "gold", "GOLD", "Gold"],
+    "Silver":   ["シルバー", "銀", "silver", "SILVER", "Silver"],
+    "Transparent": ["透明", "クリア", "トランスパレント", "transparent", "clear", "TRANSPARENT", "CLEAR", "Transparent", "Clear"],
+    "Multiple Colors": ["マルチ", "マルチカラー", "カラフル", "多色", "multiple", "MULTIPLE", "Multiple"],
 }
 
 
@@ -46,6 +50,7 @@ class ModelService:
         self.model_type: str = "none"
         self.device: str = "cpu"
         self.thresholds: dict[str, float] = {c: 0.5 for c in COLOR_LABELS}
+        self.model_source: str = "none"   # "mlflow_registry" | "local" | "keyword"
 
         self._ice_model = None
         self._ice_tokenizer = None
@@ -56,18 +61,74 @@ class ModelService:
         self._load_model()
 
     def _load_model(self):
-        if self._try_load_ice():
+        # 1. Try MLflow Registry first (champion alias)
+        if self._try_load_from_mlflow():
             return
+        # 2. Fallback: local checkpoint
+        if self._try_load_ice_local():
+            return
+        # 3. Last resort: keyword matcher
         self.model_type = "keyword_fallback"
+        self.model_source = "keyword"
         self.is_mock = True
         print("  ! Keyword fallback active (no ML models available)")
 
-    def _try_load_ice(self) -> bool:
-        ckpt = ICE_CONFIG["checkpoint_path"]
+    # ----------------------------------------------------------------
+    # MLflow Registry loading
+    # ----------------------------------------------------------------
+    def _try_load_from_mlflow(self) -> bool:
+        try:
+            import mlflow
+            import mlflow.pytorch
+            from mlflow.tracking import MlflowClient
+
+            mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+            client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
+
+            # Resolve champion alias
+            mv = client.get_model_version_by_alias(
+                MLFLOW_REGISTERED_MODEL_NAME, MLFLOW_CHAMPION_ALIAS
+            )
+            model_uri = f"models:/{MLFLOW_REGISTERED_MODEL_NAME}@{MLFLOW_CHAMPION_ALIAS}"
+            source_run_id = mv.run_id
+
+            print(f"  + Loading champion from MLflow Registry: {model_uri}")
+            print(f"    version={mv.version} run_id={source_run_id[:8]}")
+
+            import torch
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+            # Load PyTorch model from MLflow
+            from src.models.train_model_final import ICEModel  # needed for deserialization
+            model = mlflow.pytorch.load_model(model_uri, map_location=self.device)
+            model.to(self.device)
+            model.eval()
+
+            # Load mlb.pkl from the source training run artifacts
+            artifact_rel_path = f"artifacts/{Path(ICE_CONFIG['mlb_path']).name}"
+            mlb_local_path = client.download_artifacts(source_run_id, artifact_rel_path)
+            with open(mlb_local_path, "rb") as f:
+                self._ice_mlb = pickle.load(f)
+
+            self._setup_ice(model)
+            self.model_source = "mlflow_registry"
+            print(f"  + ICE DualEncoder loaded from MLflow Registry "
+                  f"({len(self._ice_mlb.classes_)} classes, device={self.device})")
+            return True
+
+        except Exception as e:
+            print(f"  - MLflow Registry load failed: {e}")
+            return False
+
+    # ----------------------------------------------------------------
+    # Local checkpoint fallback
+    # ----------------------------------------------------------------
+    def _try_load_ice_local(self) -> bool:
+        ckpt  = ICE_CONFIG["checkpoint_path"]
         mlb_p = ICE_CONFIG["mlb_path"]
 
-        if not ckpt.exists() or not mlb_p.exists():
-            print(f"  - ICE: checkpoint not found ({ckpt.name})")
+        if not Path(ckpt).exists() or not Path(mlb_p).exists():
+            print(f"  - ICE local: checkpoint not found ({ckpt})")
             return False
 
         try:
@@ -82,10 +143,6 @@ class ModelService:
                 self._ice_mlb = pickle.load(f)
 
             num_classes = len(self._ice_mlb.classes_)
-            self._ice_label_to_idx = {
-                label: i for i, label in enumerate(self._ice_mlb.classes_)
-            }
-
             dual_encoder = DualEncoder(
                 ICE_CONFIG["text_model_id"], ICE_CONFIG["vision_model_id"]
             ).to(self.device)
@@ -93,8 +150,6 @@ class ModelService:
             model = ICEModel(dual_encoder, classifier).to(self.device)
 
             state = torch.load(ckpt, map_location=self.device, weights_only=False)
-
-            # Handle both formats: full ICEModel state_dict or split checkpoint
             if isinstance(state, dict) and "classifier" in state and "dual_encoder" in state:
                 classifier.load_state_dict(state["classifier"])
                 dual_encoder.load_state_dict(state["dual_encoder"])
@@ -102,23 +157,33 @@ class ModelService:
                 model.load_state_dict(state)
 
             model.eval()
-            self._ice_model = model
-
-            from transformers import AutoTokenizer, CLIPImageProcessor
-            self._ice_tokenizer = AutoTokenizer.from_pretrained(ICE_CONFIG["text_model_id"])
-            self._ice_image_processor = CLIPImageProcessor.from_pretrained(ICE_CONFIG["vision_model_id"])
-
-            self.model_type = "ice_dual_encoder"
-            self.is_mock = False
-            self.thresholds = {c: ICE_CONFIG.get("val_threshold", 0.5) for c in COLOR_LABELS}
-
-            print(f"  + ICE DualEncoder loaded ({num_classes} classes, device={self.device})")
+            self._setup_ice(model)
+            self.model_source = "local"
+            print(f"  + ICE DualEncoder loaded from local checkpoint "
+                  f"({num_classes} classes, device={self.device})")
             return True
 
         except Exception as e:
-            print(f"  - ICE error: {e}")
+            print(f"  - ICE local error: {e}")
             return False
 
+    def _setup_ice(self, model):
+        """Common setup after model is loaded (registry or local)."""
+        from transformers import AutoTokenizer, CLIPImageProcessor
+
+        self._ice_model = model
+        self._ice_label_to_idx = {
+            label: i for i, label in enumerate(self._ice_mlb.classes_)
+        }
+        self._ice_tokenizer = AutoTokenizer.from_pretrained(ICE_CONFIG["text_model_id"])
+        self._ice_image_processor = CLIPImageProcessor.from_pretrained(ICE_CONFIG["vision_model_id"])
+        self.model_type = "ice_dual_encoder"
+        self.is_mock = False
+        self.thresholds = {c: ICE_CONFIG.get("val_threshold", 0.5) for c in COLOR_LABELS}
+
+    # ----------------------------------------------------------------
+    # Inference
+    # ----------------------------------------------------------------
     def predict(self, item_name: str, item_caption: str = "",
                 image_path: Optional[str] = None) -> dict:
         start = time.perf_counter()
@@ -164,6 +229,7 @@ class ModelService:
                 image_arr = None
 
         if image_arr is None:
+            # Gray fallback — text-only inference still works
             image_arr = np.full((224, 224, 3), 128, dtype=np.uint8)
 
         img_enc = self._ice_image_processor(
@@ -171,11 +237,11 @@ class ModelService:
         )
 
         with torch.no_grad():
-            ids = text_enc["input_ids"].to(self.device)
+            ids  = text_enc["input_ids"].to(self.device)
             mask = text_enc["attention_mask"].to(self.device)
-            px = img_enc["pixel_values"].to(self.device)
+            px   = img_enc["pixel_values"].to(self.device)
             logits = self._ice_model(ids, mask, px)
-            probs = torch.sigmoid(logits).cpu().numpy()[0]
+            probs  = torch.sigmoid(logits).cpu().numpy()[0]
 
         scores = {}
         for color in COLOR_LABELS:
@@ -209,12 +275,13 @@ class ModelService:
 
     def get_info(self) -> dict:
         info = {
-            "model_type": self.model_type,
+            "model_type":   self.model_type,
+            "model_source": self.model_source,   # neu: zeigt woher Modell kommt
             "color_labels": COLOR_LABELS,
-            "num_labels": NUM_LABELS,
-            "device": self.device,
-            "is_mock": self.is_mock,
-            "thresholds": self.thresholds,
+            "num_labels":   NUM_LABELS,
+            "device":       self.device,
+            "is_mock":      self.is_mock,
+            "thresholds":   self.thresholds,
         }
         if self._ice_mlb is not None:
             info["ice_classes"] = list(self._ice_mlb.classes_)
