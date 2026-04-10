@@ -34,6 +34,7 @@ mlruns/
 
 # image data
 data/images/
+data/images_hidden/
 
 # data folders: keep structure, ignore contents
 data/raw/*
