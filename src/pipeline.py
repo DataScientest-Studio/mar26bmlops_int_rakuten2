@@ -25,10 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.config import (
     ICE_CONFIG,
     MLFLOW_EXPERIMENT,
+    MINIO_ACCESS_KEY,
     MINIO_BUCKET_DATA,
     MINIO_ENDPOINT,
-    MINIO_ROOT_PASSWORD,
-    MINIO_ROOT_USER,
+    MINIO_SECRET_KEY,
     MINIO_X_TEST_KEY,
     MINIO_X_TRAIN_KEY,
     MINIO_Y_TRAIN_KEY,
@@ -44,11 +44,15 @@ export_params()  # sync params.yaml before every run
 
 def get_minio_client():
     """Create MinIO/S3 client."""
+    endpoint = MINIO_ENDPOINT
+    if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
+        endpoint = f"http://{endpoint}"
+
     return boto3.client(
         "s3",
-        endpoint_url=f"http://{MINIO_ENDPOINT}",
-        aws_access_key_id=MINIO_ROOT_USER,
-        aws_secret_access_key=MINIO_ROOT_PASSWORD,
+        endpoint_url=endpoint,
+        aws_access_key_id=MINIO_ACCESS_KEY,
+        aws_secret_access_key=MINIO_SECRET_KEY,
     )
 
 
@@ -62,6 +66,7 @@ def read_csv_from_minio(bucket: str, key: str) -> pd.DataFrame:
 def load_all_data_from_minio():
     """Load train/test CSVs from MinIO."""
     print("\n[1/6] Loading data from MinIO...")
+    print(f"  Endpoint: {MINIO_ENDPOINT}")
     print(f"  Bucket: {MINIO_BUCKET_DATA}")
     print(f"  X_train: {MINIO_X_TRAIN_KEY}")
     print(f"  y_train: {MINIO_Y_TRAIN_KEY}")
@@ -86,7 +91,7 @@ def ingest_into_db(df_x, df_y, df_test, mission_mode=False):
         train_x, val_x, train_y, val_y = train_test_split(
             df_x,
             df_y,
-            test_size=0.1,
+            test_size=ICE_CONFIG.get("val_ratio", 0.1),
             random_state=42,
             shuffle=True,
         )
@@ -144,12 +149,7 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
     predict_result = None
     run_id = None
 
-    # Ingest is needed for:
-    # - ingest mode
-    # - train mode
-    # - full mode
-    # - predict mode when DB is not already populated by the user
-    # To keep pipeline robust, we ingest for all modes.
+    # Robust approach: always ingest from MinIO before downstream steps
     df_x, df_y, df_test = load_all_data_from_minio()
     db_summary = ingest_into_db(df_x, df_y, df_test, mission_mode=mission_mode)
 

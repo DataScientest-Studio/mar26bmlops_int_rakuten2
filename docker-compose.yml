@@ -1,182 +1,99 @@
+version: "3.9"
+
 services:
+
+  # ===============================
+  # POSTGRES DATABASE
+  # ===============================
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema_postgres.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - app-network
+
+  # ===============================
+  # MINIO (OBJECT STORAGE)
+  # ===============================
   minio:
-    image: minio/minio
+    image: minio/minio:latest
     container_name: minio
+    restart: always
     command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     ports:
       - "9000:9000"
       - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
     networks:
-      - mlops-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      - app-network
 
-  db:
-    image: postgres:16
-    container_name: rakuten-postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./db/schema_postgres.sql:/docker-entrypoint-initdb.d/schema_postgres.sql:ro
-    networks:
-      - mlops-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
+  # ===============================
+  # MLFLOW SERVER
+  # ===============================
   mlflow:
-    build: ./mlflow
+    image: ghcr.io/mlflow/mlflow:v2.12.1
     container_name: mlflow
-    ports:
-      - "5000:5000"
+    restart: always
+    depends_on:
+      - db
+      - minio
     environment:
-      # MLflow + MinIO artifact store
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-
-      # MinIO data access
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET_DATA: ${MINIO_BUCKET_DATA}
-      MINIO_BUCKET_IMAGES: ${MINIO_BUCKET_IMAGES}
-      MINIO_IMAGE_PREFIX: ${MINIO_IMAGE_PREFIX}
-      IMAGE_SOURCE: ${IMAGE_SOURCE}
-      MINIO_X_TRAIN_KEY: ${MINIO_X_TRAIN_KEY}
-      MINIO_Y_TRAIN_KEY: ${MINIO_Y_TRAIN_KEY}
-      MINIO_X_TEST_KEY: ${MINIO_X_TEST_KEY}
-      MINIO_Y_RANDOM_KEY: ${MINIO_Y_RANDOM_KEY}
-
-      # Database
-      DB_BACKEND: ${DB_BACKEND}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      DATABASE_URL: ${DATABASE_URL}
-
-      # MLflow model config
-      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME}
-      MLFLOW_REGISTERED_MODEL_NAME: ${MLFLOW_REGISTERED_MODEL_NAME}
-      MLFLOW_CHAMPION_ALIAS: ${MLFLOW_CHAMPION_ALIAS}
-      MLFLOW_CANDIDATE_ALIAS: ${MLFLOW_CANDIDATE_ALIAS}
-
-      # Training config
-      TEXT_MODEL_ID: ${TEXT_MODEL_ID}
-      VISION_MODEL_ID: ${VISION_MODEL_ID}
-      ICE_BATCH_SIZE: ${ICE_BATCH_SIZE}
-      ICE_LR: ${ICE_LR}
-      ICE_ENCODER_LR: ${ICE_ENCODER_LR}
-      ICE_MAX_EPOCHS: ${ICE_MAX_EPOCHS}
-      ICE_UNFREEZE_LAYERS: ${ICE_UNFREEZE_LAYERS}
-      ICE_ES_PATIENCE: ${ICE_ES_PATIENCE}
-      ICE_VAL_THRESHOLD: ${ICE_VAL_THRESHOLD}
-      ICE_TRAIN_THRESHOLD: ${ICE_TRAIN_THRESHOLD}
-      ICE_MAX_LEN: ${ICE_MAX_LEN}
-      DB_TRAIN_SPLIT: ${DB_TRAIN_SPLIT}
-      PREDICT_SPLIT: ${PREDICT_SPLIT}
-      VAL_RATIO: ${VAL_RATIO}
-      IMAGE_DIR: ${IMAGE_DIR}
-    depends_on:
-      minio:
-        condition: service_healthy
-      db:
-        condition: service_healthy
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --backend-store-uri ${DATABASE_URL}
+      --default-artifact-root s3://${MINIO_BUCKET_DATA}/mlflow
+      --host 0.0.0.0
+      --port 5000
     networks:
-      - mlops-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      - app-network
 
+  # ===============================
+  # API SERVICE (OPTIONAL - FUTURE USE)
+  # ===============================
   api:
-    build: ./api
-    container_name: rakuten-api
+    build: .
+    container_name: rakuten_api
+    restart: always
+    depends_on:
+      - db
+      - minio
+      - mlflow
+    env_file:
+      - .env
     ports:
       - "8000:8000"
-    environment:
-      # MinIO
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET_DATA: ${MINIO_BUCKET_DATA}
-      MINIO_BUCKET_IMAGES: ${MINIO_BUCKET_IMAGES}
-      MINIO_IMAGE_PREFIX: ${MINIO_IMAGE_PREFIX}
-      IMAGE_SOURCE: ${IMAGE_SOURCE}
-      MINIO_X_TRAIN_KEY: ${MINIO_X_TRAIN_KEY}
-      MINIO_Y_TRAIN_KEY: ${MINIO_Y_TRAIN_KEY}
-      MINIO_X_TEST_KEY: ${MINIO_X_TEST_KEY}
-      MINIO_Y_RANDOM_KEY: ${MINIO_Y_RANDOM_KEY}
-
-      # MLflow
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME}
-      MLFLOW_REGISTERED_MODEL_NAME: ${MLFLOW_REGISTERED_MODEL_NAME}
-      MLFLOW_CHAMPION_ALIAS: ${MLFLOW_CHAMPION_ALIAS}
-      MLFLOW_CANDIDATE_ALIAS: ${MLFLOW_CANDIDATE_ALIAS}
-
-      # Database
-      DB_BACKEND: ${DB_BACKEND}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      DATABASE_URL: ${DATABASE_URL}
-
-      # App / model
-      APP_ENV: ${APP_ENV}
-      MODEL_STAGE: ${MODEL_STAGE}
-      TEXT_MODEL_ID: ${TEXT_MODEL_ID}
-      VISION_MODEL_ID: ${VISION_MODEL_ID}
-      IMAGE_DIR: ${IMAGE_DIR}
-    depends_on:
-      minio:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-      mlflow:
-        condition: service_healthy
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
     networks:
-      - mlops-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      - app-network
 
+# ===============================
+# VOLUMES
+# ===============================
 volumes:
-  minio_data:
   postgres_data:
+  minio_data:
 
+# ===============================
+# NETWORK
+# ===============================
 networks:
-  mlops-net:
+  app-network:
     driver: bridge

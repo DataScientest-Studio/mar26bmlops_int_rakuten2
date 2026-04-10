@@ -37,8 +37,14 @@ for d in [DATA_DIR, MODEL_DIR, SUBMIT_DIR, DB_DIR]:
 # MINIO / OBJECT STORAGE
 # ──────────────────────────────────────────────────────────────
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
-MINIO_ROOT_USER = os.getenv("MINIO_ROOT_USER", "admin")
-MINIO_ROOT_PASSWORD = os.getenv("MINIO_ROOT_PASSWORD", "password123")
+
+# Prefer dedicated MinIO vars, but stay backward-compatible
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY") or os.getenv("MINIO_ROOT_USER", "admin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY") or os.getenv("MINIO_ROOT_PASSWORD", "password123")
+
+# Backward-compatible aliases for existing code / compose
+MINIO_ROOT_USER = MINIO_ACCESS_KEY
+MINIO_ROOT_PASSWORD = MINIO_SECRET_KEY
 
 MINIO_BUCKET_DATA = os.getenv("MINIO_BUCKET_DATA", "data")
 MINIO_BUCKET_IMAGES = os.getenv("MINIO_BUCKET_IMAGES", "images")
@@ -48,12 +54,17 @@ MINIO_Y_TRAIN_KEY = os.getenv("MINIO_Y_TRAIN_KEY", "y_train.csv")
 MINIO_X_TEST_KEY = os.getenv("MINIO_X_TEST_KEY", "X_test.csv")
 MINIO_Y_RANDOM_KEY = os.getenv("MINIO_Y_RANDOM_KEY", "y_random.csv")
 
-# New: image loading control
+# Image loading control
 IMAGE_SOURCE = os.getenv("IMAGE_SOURCE", "minio").lower()   # "minio" or "local"
 MINIO_IMAGE_PREFIX = os.getenv("MINIO_IMAGE_PREFIX", "")    # e.g. "train_images/"
 IMAGE_DIR = Path(os.getenv("IMAGE_DIR", str(DATA_DIR / "images")))
 
-MINIO_HTTP_ENDPOINT = f"http://{MINIO_ENDPOINT}"
+# Ensure endpoint has a usable HTTP URI when needed
+if MINIO_ENDPOINT.startswith("http://") or MINIO_ENDPOINT.startswith("https://"):
+    MINIO_HTTP_ENDPOINT = MINIO_ENDPOINT
+else:
+    MINIO_HTTP_ENDPOINT = f"http://{MINIO_ENDPOINT}"
+
 MINIO_DATA_BASE_URI = f"s3://{MINIO_BUCKET_DATA}"
 
 # ──────────────────────────────────────────────────────────────
@@ -125,6 +136,9 @@ CLIP_CONFIG = {
     "pretrained": "laion2b_s34b_b79k",
     "batch_size": 64,
     "image_dir": IMAGE_DIR,
+    "image_source": IMAGE_SOURCE,
+    "minio_bucket_images": MINIO_BUCKET_IMAGES,
+    "minio_image_prefix": MINIO_IMAGE_PREFIX,
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -185,9 +199,9 @@ MLFLOW_REGISTERED_MODEL_NAME = os.getenv(
 MLFLOW_CHAMPION_ALIAS = os.getenv("MLFLOW_CHAMPION_ALIAS", "champion")
 MLFLOW_CANDIDATE_ALIAS = os.getenv("MLFLOW_CANDIDATE_ALIAS", "candidate")
 
-MLFLOW_S3_ENDPOINT_URL = os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://minio:9000")
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", MINIO_ROOT_USER)
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", MINIO_ROOT_PASSWORD)
+MLFLOW_S3_ENDPOINT_URL = os.getenv("MLFLOW_S3_ENDPOINT_URL", MINIO_HTTP_ENDPOINT)
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", MINIO_ACCESS_KEY)
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", MINIO_SECRET_KEY)
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
 # ──────────────────────────────────────────────────────────────
@@ -208,6 +222,7 @@ def export_params():
         },
         "MINIO_CONFIG": {
             "endpoint": MINIO_ENDPOINT,
+            "http_endpoint": MINIO_HTTP_ENDPOINT,
             "bucket_data": MINIO_BUCKET_DATA,
             "bucket_images": MINIO_BUCKET_IMAGES,
             "image_source": IMAGE_SOURCE,
@@ -219,6 +234,7 @@ def export_params():
         },
         "DATABASE_CONFIG": {
             "db_backend": DB_BACKEND,
+            "database_url": DATABASE_URL,
             "postgres_host": POSTGRES_HOST,
             "postgres_port": POSTGRES_PORT,
             "postgres_db": POSTGRES_DB,

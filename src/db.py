@@ -28,6 +28,7 @@ POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 POSTGRES_DB = os.getenv("POSTGRES_DB", "rakuten")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "rakuten_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "rakuten_pass")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 SCHEMA_SQLITE_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 SCHEMA_POSTGRES_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_postgres.sql"
@@ -35,6 +36,10 @@ SCHEMA_POSTGRES_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_p
 
 def _postgres_conn():
     import psycopg2
+
+    if DATABASE_URL:
+        return psycopg2.connect(DATABASE_URL)
+
     return psycopg2.connect(
         host=POSTGRES_HOST,
         port=POSTGRES_PORT,
@@ -217,9 +222,9 @@ def get_split_data(split: str = "train"):
 def get_products(split: str = "test"):
     with get_conn() as conn:
         df = pd.read_sql(
-            "SELECT image_file_name, item_name, item_caption FROM products WHERE split = %s"
+            "SELECT id, image_file_name, item_name, item_caption FROM products WHERE split = %s ORDER BY id"
             if DB_BACKEND == "postgres"
-            else "SELECT image_file_name, item_name, item_caption FROM products WHERE split = ?",
+            else "SELECT id, image_file_name, item_name, item_caption FROM products WHERE split = ? ORDER BY id",
             conn,
             params=(split,),
         )
