@@ -127,6 +127,33 @@ def maybe_copy_mirco_db():
         )
         print("DB Copy to local for Mirco only")
 
+    python -m src.pipeline --mode ingest              # DB ingest only (dev)
+    python -m src.pipeline --mode ingest --mission_mode  # DB ingest (all data)
+    python -m src.pipeline --mode train               # Training only
+    python -m src.pipeline --mode predict             # Prediction only
+    python -m src.pipeline --mode full                # Full run
+"""
+import argparse
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from sklearn.model_selection import train_test_split
+from src.config import export_params
+export_params() # sync params.yaml before every run
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.config import (
+    DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
+)
+from src.db import init_db, ingest_products, get_db_summary, clear_products
+from src.models.train_model_final import train
+from src.models.predict_model_final import predict
+from src.data.load_data_s3 import load_all_data
+
+
+
 
 def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=None):
     """
@@ -136,6 +163,8 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
         mode:             'full', 'ingest', 'train', 'predict'
         real:             kept for compatibility
         mission_mode:     True = use all training data
+        real:             True = real Rakuten data, False = mock data
+        mission_mode:     True = use all training data (Rakuten Challenge)
         config_overrides: Dict with config overrides
     """
     print("=" * 60)
@@ -246,6 +275,91 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
         "prediction_path": str(out_path),
         "submission_path": str(sub_path),
     }
+    print(f"  Mode: {mode} | Data: {'real' if real else 'mock'} | Mission: {mission_mode}")
+    print("=" * 60)
+
+    # -- 1. Load data -- (local or Minio, controlled by IMAGE_SOURCE)
+    df_x, df_y, df_test = load_all_data()
+
+    # -- 2. Train/Val split (dev mode only) --
+    if not mission_mode:
+        print("\n[2/6] Train/Val split...")
+        train_x, val_x, train_y, val_y = train_test_split(
+            df_x, df_y, test_size=0.1, random_state=42
+        )
+        print(f"  Train={len(train_x)}, Val={len(val_x)}")
+    else:
+        print("\n[2/6] Mission mode — no split, all data used for training")
+
+    # -- 3. Fill database --
+    if mode in ("full", "ingest"):
+        print("\n[3/6] Filling database...")
+        init_db()
+        clear_products()
+        if mission_mode:
+            # All labeled data for training
+            ingest_products(df_x,    df_y,     split="train")
+            ingest_products(df_test, df_y=None, split="test")
+        else:
+            # Dev mode: 90/10 split
+            ingest_products(train_x, train_y, split="train")
+            ingest_products(val_x,   val_y,   split="val")
+            ingest_products(df_test, df_y=None, split="test")
+
+        summary = get_db_summary()
+        print(f"  DB: {summary['products_by_split']}")
+
+    # import os
+    # if os.getenv("USER") == "mirco":
+    #     import shutil
+    #     shutil.copy(
+    #         "/home/mirco/rakuten2/db/rakuten.db",
+    #         "/mnt/c/02_Project_MLOPS/rakuten_colors.db"
+    #     )
+    #     print("DB Copy to local for Mirco only")
+
+    # if mode == "ingest":
+    #     print("\nDone (ingest only).")
+    #     return
+
+    # -- 4. ICE DualEncoder training --
+    if mode in ("full", "train"):
+        print("\n[4/6] ICE DualEncoder training...")
+        config = {**ICE_CONFIG, **(config_overrides or {})}
+        result = train(config=config)          # dict
+        run_id = result["run_id"]              # if needed
+
+    if mode == "train":
+        print("\nDone (train only).")
+        return result
+
+    # -- 5. Test set prediction --
+    if mode in ("full", "predict"):
+        print("\n[5/6] Predicting test set...")
+        out_path = DATA_DIR / "submissions" / "y_pred_test.csv"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        predict(split="test", out_path=str(out_path))
+
+    # -- 6. Submission --
+    if mode == "full":
+        print("\n[6/6] Creating submission...")
+        sub_path = DATA_DIR / "submissions" / "submission_ice_v1.csv"
+        results = pd.read_csv(out_path)
+        results.to_csv(sub_path, index=False)
+
+        try:
+            import mlflow
+            mlflow.set_experiment(MLFLOW_EXPERIMENT)
+            with mlflow.start_run(run_name="ice_dual_encoder_full"):
+                mlflow.log_param("mission_mode", mission_mode)
+                mlflow.log_artifact(str(sub_path))
+        except Exception:
+            pass
+
+        print("\n" + "=" * 60)
+        print("PIPELINE DONE!")
+        print(f"  Submission: {sub_path}")
+        print("=" * 60)
 
 
 if __name__ == "__main__":
@@ -276,6 +390,18 @@ if __name__ == "__main__":
         overrides["batch_size"] = args.batch_size
     if args.encoder_lr is not None:
         overrides["encoder_lr"] = args.encoder_lr
+    parser.add_argument("--mode", default="ingest",                                                                         # mk Change here pipline mode for more then just DB creation! for now ingest only
+                        choices=["full", "ingest", "train", "predict"])
+    parser.add_argument("--real", action="store_true")
+    parser.add_argument("--mission_mode", action="store_true",                                                              # switch for  store_true -> split xtrain into 80 /10 val /10 pseudo_test mode 
+                        help="Mission mode: use all training data (Rakuten Challenge)")
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--lr",     type=float, default=None)
+    args = parser.parse_args()
+
+    overrides = {}
+    if args.epochs: overrides["max_epochs"] = args.epochs
+    if args.lr:     overrides["learning_rate"] = args.lr
 
     run_pipeline(
         mode=args.mode,
@@ -283,3 +409,15 @@ if __name__ == "__main__":
         mission_mode=args.mission_mode,
         config_overrides=overrides,
     )
+        config_overrides=overrides
+    )
+
+
+
+# Space mk: Dev
+# cp /home/mirco/rakuten2/db/rakuten_colors.db /mnt/c/02_Project_MLOPS/ 
+# mlflow server \
+# --backend-store-uri mlruns \
+# --default-artifact-root mlruns \
+# --host 0.0.0.0 \
+# --port 5000

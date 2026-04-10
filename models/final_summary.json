@@ -1,0 +1,12 @@
+{
+  "run_id": "676210062eca450d86a76e2351d59dc3",
+  "best_epoch": 1,
+  "epochs_completed": 1,
+  "best_val_f1_micro": 0.6238059461199957,
+  "best_val_f1_macro": 0.5626975063771723,
+  "best_val_precision_micro": 0.5012145167085879,
+  "best_val_precision_macro": 0.4480742432686718,
+  "best_val_recall_micro": 0.8257832295342064,
+  "best_val_recall_macro": 0.7765129111760356,
+  "dataset_version": "1110e2dfa2387a406b66d72b03e0fcc4fdd9a17baef6ad54fd4b76a1e1135094"
+}

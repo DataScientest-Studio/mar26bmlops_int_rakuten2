@@ -20,16 +20,27 @@ from dotenv import load_dotenv
 # ──────────────────────────────────────────────────────────────
 load_dotenv()
 
+from dotenv import load_dotenv
+
+
+# ──────────────────────────────────────────────────────────────
+# ENV + Data
+# ──────────────────────────────────────────────────────────────
+load_dotenv()
+
+
 # ──────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 DATA_DIR = PROJECT_ROOT / "data"
 MODEL_DIR = PROJECT_ROOT / "models"
 SUBMIT_DIR = PROJECT_ROOT / "submissions"
 DB_DIR = PROJECT_ROOT / "db"
 
+# Ensure folders exist
 for d in [DATA_DIR, MODEL_DIR, SUBMIT_DIR, DB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
@@ -49,6 +60,15 @@ MINIO_ROOT_PASSWORD = MINIO_SECRET_KEY
 MINIO_BUCKET_DATA = os.getenv("MINIO_BUCKET_DATA", "data")
 MINIO_BUCKET_IMAGES = os.getenv("MINIO_BUCKET_IMAGES", "images")
 
+# MINIO / OBJECT STORAGE  (merged from VR branch)
+# ──────────────────────────────────────────────────────────────
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+MINIO_ROOT_USER = os.getenv("MINIO_ROOT_USER", "minioadmin")
+MINIO_ROOT_PASSWORD = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+ 
+MINIO_BUCKET_DATA = os.getenv("MINIO_BUCKET_DATA", "data")
+MINIO_BUCKET_IMAGES = os.getenv("MINIO_BUCKET_IMAGES", "images")
+ 
 MINIO_X_TRAIN_KEY = os.getenv("MINIO_X_TRAIN_KEY", "X_train.csv")
 MINIO_Y_TRAIN_KEY = os.getenv("MINIO_Y_TRAIN_KEY", "y_train.csv")
 MINIO_X_TEST_KEY = os.getenv("MINIO_X_TEST_KEY", "X_test.csv")
@@ -84,6 +104,17 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
 )
+ 
+# Image loading control: "minio" = stream from S3, "local" = read from disk
+IMAGE_SOURCE = os.getenv("IMAGE_SOURCE", "local").lower()   # "minio" or "local"
+DATA_SOURCE = os.getenv("DATA_SOURCE", "local").lower()     # "minio" or "local"
+MINIO_IMAGE_PREFIX = os.getenv("MINIO_IMAGE_PREFIX", "")    # e.g. "train_images/"
+IMAGE_DIR = Path(os.getenv("IMAGE_DIR", str(DATA_DIR / "images")))
+ 
+MINIO_HTTP_ENDPOINT = f"http://{MINIO_ENDPOINT}"
+MINIO_DATA_BASE_URI = f"s3://{MINIO_BUCKET_DATA}"
+
+
 
 # ──────────────────────────────────────────────────────────────
 # COLOR LABELS
@@ -108,6 +139,9 @@ COLOR_LABELS = [
     "Silver",
     "Transparent",
     "Multiple Colors",
+    "Black", "White", "Grey", "Navy", "Blue", "Red", "Pink",
+    "Brown", "Beige", "Green", "Khaki", "Orange", "Yellow",
+    "Purple", "Burgundy", "Gold", "Silver", "Transparent", "Multiple Colors"
 ]
 
 NUM_LABELS = len(COLOR_LABELS)
@@ -139,6 +173,7 @@ CLIP_CONFIG = {
     "image_source": IMAGE_SOURCE,
     "minio_bucket_images": MINIO_BUCKET_IMAGES,
     "minio_image_prefix": MINIO_IMAGE_PREFIX,
+    "image_dir": DATA_DIR / "images",
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -148,6 +183,11 @@ ICE_CONFIG = {
     "text_model_id": os.getenv("TEXT_MODEL_ID", "cl-tohoku/bert-base-japanese-v3"),
     "vision_model_id": os.getenv("VISION_MODEL_ID", "openai/clip-vit-base-patch16"),
 
+    # Models
+    "text_model_id": os.getenv("TEXT_MODEL_ID", "cl-tohoku/bert-base-japanese-v3"),
+    "vision_model_id": os.getenv("VISION_MODEL_ID", "openai/clip-vit-base-patch16"),
+
+    # Training
     "batch_size": int(os.getenv("ICE_BATCH_SIZE", "128")),
     "learning_rate": float(os.getenv("ICE_LR", "3e-3")),
     "encoder_lr": float(os.getenv("ICE_ENCODER_LR", "2e-5")),
@@ -158,6 +198,11 @@ ICE_CONFIG = {
     "val_threshold": float(os.getenv("ICE_VAL_THRESHOLD", "0.5")),
     "train_threshold": float(os.getenv("ICE_TRAIN_THRESHOLD", "0.5")),
 
+    # Thresholds
+    "val_threshold": float(os.getenv("ICE_VAL_THRESHOLD", "0.5")),
+    "train_threshold": float(os.getenv("ICE_TRAIN_THRESHOLD", "0.5")),
+
+    # Data
     "max_len": int(os.getenv("ICE_MAX_LEN", "128")),
     "image_dir": IMAGE_DIR,
     "image_source": IMAGE_SOURCE,
@@ -168,6 +213,7 @@ ICE_CONFIG = {
     "predict_split": os.getenv("PREDICT_SPLIT", "val"),
     "val_ratio": float(os.getenv("VAL_RATIO", "0.1")),
 
+    # Outputs
     "checkpoint_path": MODEL_DIR / "color_model_best.pth",
     "mlb_path": MODEL_DIR / "mlb.pkl",
     "predictions_path": MODEL_DIR / "y_pred_training.csv",
@@ -175,6 +221,7 @@ ICE_CONFIG = {
 
 # ──────────────────────────────────────────────────────────────
 # ENSEMBLE
+# ENSEMBLE (optional future)
 # ──────────────────────────────────────────────────────────────
 ENSEMBLE_CONFIG = {
     "text_weight": 0.65,
@@ -194,6 +241,24 @@ MLFLOW_EXPERIMENT = os.getenv(
 MLFLOW_REGISTERED_MODEL_NAME = os.getenv(
     "MLFLOW_REGISTERED_MODEL_NAME",
     "rakuten-ice-dual-encoder",
+# DATABASE
+# ──────────────────────────────────────────────────────────────
+DATABASE_PATH = os.getenv("DATABASE_PATH", str(DB_DIR / "rakuten.db"))
+
+# ──────────────────────────────────────────────────────────────
+# MLFLOW
+# ──────────────────────────────────────────────────────────────
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+
+MLFLOW_EXPERIMENT = os.getenv(
+    "MLFLOW_EXPERIMENT_NAME",
+    "rakuten_color_extraction"
+)
+
+# Registry
+MLFLOW_REGISTERED_MODEL_NAME = os.getenv(
+    "MLFLOW_REGISTERED_MODEL_NAME",
+    "rakuten-ice-dual-encoder"
 )
 
 MLFLOW_CHAMPION_ALIAS = os.getenv("MLFLOW_CHAMPION_ALIAS", "champion")
@@ -203,6 +268,9 @@ MLFLOW_S3_ENDPOINT_URL = os.getenv("MLFLOW_S3_ENDPOINT_URL", MINIO_HTTP_ENDPOINT
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", MINIO_ACCESS_KEY)
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", MINIO_SECRET_KEY)
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+MLFLOW_S3_ENDPOINT_URL = os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://minio:9000")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", MINIO_ROOT_USER)
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", MINIO_ROOT_PASSWORD)
 
 # ──────────────────────────────────────────────────────────────
 # APP ENV
@@ -214,6 +282,17 @@ MODEL_STAGE = os.getenv("MODEL_STAGE", "Production")
 # HELPERS
 # ──────────────────────────────────────────────────────────────
 def export_params():
+
+
+# ──────────────────────────────────────────────────────────────
+# params.yaml create, Copy from ICE_CONFIG to params.yaml for DVC due DVC can Not read pyfiles
+# ──────────────────────────────────────────────────────────────
+
+
+import yaml  # pip install pyyaml if missing
+ 
+def export_params():
+    """Sync params.yaml for DVC - called automatically by pipeline."""
     params = {
         "ICE_CONFIG": {
             k: (str(v) if isinstance(v, Path) else v)
@@ -250,5 +329,8 @@ def export_params():
         },
     }
 
+            "s3_endpoint_url": MLFLOW_S3_ENDPOINT_URL,
+        },
+    }
     with open(PROJECT_ROOT / "params.yaml", "w", encoding="utf-8") as f:
         yaml.dump(params, f, default_flow_style=False, sort_keys=False)

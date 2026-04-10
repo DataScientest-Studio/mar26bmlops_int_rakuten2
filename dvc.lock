@@ -1,0 +1,80 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: python -m src.pipeline --mode ingest
+    deps:
+    - path: data/raw/X_test.csv
+      hash: md5
+      md5: b03e9f214bd27c98ecd772cc8b990623
+      size: 57856660
+    - path: data/raw/X_train.csv
+      hash: md5
+      md5: bfa8e8243379d1636f84bdcb427b744d
+      size: 329723647
+    - path: data/raw/y_train.csv
+      hash: md5
+      md5: 587cc6585d35747e844aeab2f9ef1c31
+      size: 5592658
+    - path: src/data/load_data.py
+      hash: md5
+      md5: 80c9c04ad9452e16c86dd769aad4766f
+      size: 3281
+    - path: src/db.py
+      hash: md5
+      md5: bffbc57263ea09d97c5e7216b3411716
+      size: 6563
+    - path: src/pipeline.py
+      hash: md5
+      md5: a9a0a1e7ee962b62caee875d5e275e2a
+      size: 5890
+    outs:
+    - path: db/rakuten.db
+      hash: md5
+      md5: 59bcf953a88ae4a61387ccf9dee4139f
+      size: 529719296
+  train:
+    cmd: python -m src.models.train_model_final
+    deps:
+    - path: data/images
+      hash: md5
+      md5: 8aeac5c7b6431a78b26b6301ef9c13b8.dir
+      size: 3179271883
+      nfiles: 249470
+    - path: db/rakuten.db
+      hash: md5
+      md5: 6e6446387471f7bc123ccd1bf1b3f032
+      size: 529719296
+    - path: src/config.py
+      hash: md5
+      md5: 1a1e2f0e3b5fadb43d22f5fe4e089908
+      size: 10174
+    - path: src/models/train_model_final.py
+      hash: md5
+      md5: f178f12f28c67c52d2fa7aca5e396c7e
+      size: 45700
+    params:
+      params.yaml:
+        ICE_CONFIG:
+          batch_size: 128
+          db_train: train
+          encoder_lr: 2e-05
+          es_patience: 3
+          learning_rate: 0.003
+          max_epochs: 1
+          max_len: 128
+          predict_split: val
+          text_model_id: cl-tohoku/bert-base-japanese-v3
+          train_threshold: 0.5
+          unfreeze_layers: 2
+          val_ratio: 0.1
+          val_threshold: 0.5
+          vision_model_id: openai/clip-vit-base-patch16
+    outs:
+    - path: models/color_model_best.pth
+      hash: md5
+      md5: da9ea8da18ebe40ff62580daae55c50d
+      size: 796643585
+    - path: models/mlb.pkl
+      hash: md5
+      md5: 9101195720669b133351d39d093b2f94
+      size: 541

@@ -12,6 +12,8 @@ from src.config import COLOR_LABELS
 # -- Paths --
 TRAIN_PRED_PATH = Path("models/y_pred_training.csv")
 VAL_PRED_PATH   = Path("reports/y_pred.csv")
+TRAIN_PRED_PATH = Path("reports/y_pred_train.csv")
+VAL_PRED_PATH   = Path("reports/y_pred_val.csv")
 REPORT_PATH     = Path("reports/drift_report.html")
 
 def load_label_counts(path: Path) -> pd.DataFrame:

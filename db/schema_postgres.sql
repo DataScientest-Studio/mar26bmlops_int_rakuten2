@@ -1,6 +1,7 @@
 -- ============================================================
 -- Rakuten Color Extraction – PostgreSQL Schema
 -- Executed automatically on first database initialization
+-- Wird beim docker-compose up automatisch ausgeführt
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS products (
@@ -24,6 +25,9 @@ CREATE TABLE IF NOT EXISTS runs (
     mlflow_run_id   TEXT UNIQUE NOT NULL,
     model_type      VARCHAR(50),
     val_f1          DOUBLE PRECISION,
+    mlflow_run_id   TEXT UNIQUE,
+    model_type      VARCHAR(50),
+    val_f1          FLOAT,
     params          JSONB,
     created_at      TIMESTAMP DEFAULT NOW()
 );
@@ -37,11 +41,17 @@ CREATE TABLE IF NOT EXISTS predictions (
     predicted       BOOLEAN
 );
 
+    score           FLOAT,
+    predicted       BOOLEAN
+);
+
+-- Indices für schnelle Abfragen
 CREATE INDEX IF NOT EXISTS idx_products_split ON products(split);
 CREATE INDEX IF NOT EXISTS idx_labels_product ON labels(product_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_run ON predictions(run_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_product ON predictions(product_id);
 
+-- Prediction Overview with img file
 CREATE OR REPLACE VIEW predictions_with_image AS
 SELECT
     p.id              AS prediction_id,
@@ -54,4 +64,5 @@ SELECT
     pr.split,
     pr.item_name
 FROM predictions p
+JOIN products pr ON pr.id = p.product_id;
 JOIN products pr ON pr.id = p.product_id;
