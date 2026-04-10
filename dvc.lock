@@ -42,16 +42,16 @@ stages:
       nfiles: 249470
     - path: db/rakuten.db
       hash: md5
-      md5: 3761ace3a9ac3ebb11d5122c5ab1a461
+      md5: 6e6446387471f7bc123ccd1bf1b3f032
       size: 529719296
     - path: src/config.py
       hash: md5
-      md5: c0b80e9dddc034dbadab58f9029be85e
-      size: 7964
+      md5: 1a1e2f0e3b5fadb43d22f5fe4e089908
+      size: 10174
     - path: src/models/train_model_final.py
       hash: md5
-      md5: 47a258eeb87103de189d0758de278fbe
-      size: 42423
+      md5: f178f12f28c67c52d2fa7aca5e396c7e
+      size: 45700
     params:
       params.yaml:
         ICE_CONFIG:
@@ -72,7 +72,7 @@ stages:
     outs:
     - path: models/color_model_best.pth
       hash: md5
-      md5: 550cf2201fb3fcf649206f355d2663a2
+      md5: da9ea8da18ebe40ff62580daae55c50d
       size: 796643585
     - path: models/mlb.pkl
       hash: md5
