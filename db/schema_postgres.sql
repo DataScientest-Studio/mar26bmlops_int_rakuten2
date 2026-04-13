@@ -1,5 +1,6 @@
 -- ============================================================
 -- Rakuten Color Extraction – PostgreSQL Schema
+-- Executed automatically on first database initialization
 -- Wird beim docker-compose up automatisch ausgeführt
 -- ============================================================
 
@@ -21,6 +22,9 @@ CREATE TABLE IF NOT EXISTS labels (
 
 CREATE TABLE IF NOT EXISTS runs (
     id              SERIAL PRIMARY KEY,
+    mlflow_run_id   TEXT UNIQUE NOT NULL,
+    model_type      VARCHAR(50),
+    val_f1          DOUBLE PRECISION,
     mlflow_run_id   TEXT UNIQUE,
     model_type      VARCHAR(50),
     val_f1          FLOAT,
@@ -33,6 +37,10 @@ CREATE TABLE IF NOT EXISTS predictions (
     product_id      INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     run_id          TEXT NOT NULL,
     color_tag       VARCHAR(50) NOT NULL,
+    score           DOUBLE PRECISION,
+    predicted       BOOLEAN
+);
+
     score           FLOAT,
     predicted       BOOLEAN
 );
@@ -56,4 +64,5 @@ SELECT
     pr.split,
     pr.item_name
 FROM predictions p
+JOIN products pr ON pr.id = p.product_id;
 JOIN products pr ON pr.id = p.product_id;

@@ -3,16 +3,16 @@ venv/
 .venv/
 
 # dotenv
-.env
+
 .env2
 .env3
 .env4
-
 # python cache
 __pycache__/
 *.py[cod]
 .mypy_cache/
 .ipynb_checkpoints/
+
 
 # IDE
 .vscode/
@@ -26,7 +26,6 @@ __pycache__/
 
 # databases
 rakuten_colors.db
-*.db
 
 # MLflow
 mlflow/
@@ -49,6 +48,16 @@ data/interim/*
 !data/external/.gitkeep
 !data/interim/.gitkeep
 
+minio_data/
+*.jpg
+*.png
+*.csv
+*.pkl
+*.pt
+*.h5
+__pycache__/
+.venv/
+.env
 # models – ignore large files
 models/*.pth
 models/*.pt
@@ -60,19 +69,17 @@ models/*.h5
 models/*.joblib
 models/*.sav
 *.pkl
-models/*.png
 
 # helper scripts not needed in repo
 z_helper_img.py
-z_mk_manual_dvc_mlflow_MinIO.txt
 
-# local folders / artifacts
+# mk 
 db/
-minio_data/
-z_space_mk_prepare/
-
-# archives
-*.zip
-*.tar
-projekt_snapshot.zip
+*.db
+models/*.png
+z_mk_manual_dvc_mlflow_MinIO.txt
 data/images_NFkV58V.tar
+projekt_snapshot.zip
+*.zip
++*.tar
+z_space_mk_prepare/
