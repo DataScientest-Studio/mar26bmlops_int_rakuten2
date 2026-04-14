@@ -9,6 +9,10 @@
 #     run --rm airflow-init
 #
 # Access Airflow UI: http://localhost:8080 (admin / admin)
+#
+# NOTE: PYTHONPATH is NOT set to /opt/airflow/app because the project
+# contains a mlflow/ folder that shadows the real mlflow package.
+# Task functions add /opt/airflow/app to sys.path explicitly when needed.
 
 services:
   airflow-init:
@@ -45,24 +49,26 @@ services:
     env_file:
       - .env
     environment:
+      AIRFLOW__WEBSERVER__SECRET_KEY: "rakuten-mlops-2026"
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://postgres:postgres@postgres:5432/airflow
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      PYTHONPATH: /opt/airflow/app/src
-      # MLflow/MinIO access from within Airflow tasks
+      # NO PYTHONPATH here — mlflow/ folder in project root shadows the real package
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      _PIP_ADDITIONAL_REQUIREMENTS: >-
+        mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
+        numpy==1.26.4 pillow tqdm pyyaml python-dotenv
+        torch --extra-index-url https://download.pytorch.org/whl/cpu
+        transformers fugashi unidic-lite
     ports:
       - "8080:8080"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - .:/opt/airflow/app       # project root → PYTHONPATH
-      - ./data:/opt/airflow/app/data
-      - ./models:/opt/airflow/app/models
-      - ./db:/opt/airflow/app/db
+      - .:/opt/airflow/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,23 +83,28 @@ services:
     env_file:
       - .env
     environment:
+      AIRFLOW__WEBSERVER__SECRET_KEY: "rakuten-mlops-2026"
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://postgres:postgres@postgres:5432/airflow
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      PYTHONPATH: /opt/airflow/app/src
+      # NO PYTHONPATH here — see note above
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      _PIP_ADDITIONAL_REQUIREMENTS: >-
+        mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
+        numpy==1.26.4 pillow tqdm pyyaml python-dotenv
+        torch --extra-index-url https://download.pytorch.org/whl/cpu
+        transformers fugashi unidic-lite
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - .:/opt/airflow/app
-      - ./data:/opt/airflow/app/data
-      - ./models:/opt/airflow/app/models
-      - ./db:/opt/airflow/app/db
     depends_on:
       postgres:
         condition: service_healthy
     command: airflow scheduler
     restart: unless-stopped
+
+    # docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d --force-recreate airflow-webserver airflow-scheduler
