@@ -10,14 +10,14 @@ Default behavior:
     - save predictions to CSV and DB
 
 Usage examples:
-    python -m src.models.predict_model_ice
-    python -m src.models.predict_model_ice --split val
-    python -m src.models.predict_model_ice --split pseudo_test
-    python -m src.models.predict_model_ice --split test
-    python -m src.models.predict_model_ice --model-alias champion
-    python -m src.models.predict_model_ice --model-alias candidate
-    python -m src.models.predict_model_ice --model-version 3
-    python -m src.models.predict_model_ice --threshold 0.3 --batch_size 64
+    python -m src.models.predict_model_final
+    python -m src.models.predict_model_final --split val
+    python -m src.models.predict_model_final --split pseudo_test
+    python -m src.models.predict_model_final --split test
+    python -m src.models.predict_model_final --model-alias champion
+    python -m src.models.predict_model_final --model-alias candidate
+    python -m src.models.predict_model_final --model-version 3
+    python -m src.models.predict_model_final --threshold 0.3 --batch_size 64
 """
 
 import os
@@ -25,12 +25,11 @@ import sys
 import json
 import pickle
 import argparse
-import tempfile
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from PIL import Image, ImageFile
+from PIL import ImageFile
 from tqdm.auto import tqdm
 
 import torch
@@ -53,7 +52,7 @@ from src.config import (
     MINIO_ROOT_USER,
     MINIO_ROOT_PASSWORD,
 )
-from src.db import save_predictions, get_conn, get_split_data
+from src.db import save_predictions, get_split_data
 
 # Import model classes so MLflow can deserialize the logged PyTorch model
 from src.models.train_model_final import (
@@ -69,6 +68,21 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # Helpers
 # ============================================================
 
+def configure_mlflow_s3() -> None:
+    """
+    Ensure MLflow artifact access works when the backend uses MinIO / S3.
+    """
+    if MINIO_ENDPOINT:
+        endpoint = MINIO_ENDPOINT
+        if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
+            endpoint = f"http://{endpoint}"
+
+        os.environ["MLFLOW_S3_ENDPOINT_URL"] = endpoint
+        os.environ["AWS_ACCESS_KEY_ID"] = MINIO_ROOT_USER
+        os.environ["AWS_SECRET_ACCESS_KEY"] = MINIO_ROOT_PASSWORD
+        os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+
+
 def ensure_min_predictions(probs: torch.Tensor, threshold: float, min_preds: int = 1) -> np.ndarray:
     preds = (probs > threshold).int().cpu().numpy()
     for i in range(len(preds)):
@@ -83,8 +97,18 @@ def ensure_min_predictions(probs: torch.Tensor, threshold: float, min_preds: int
 # ============================================================
 
 class SQLInferenceDataset(Dataset):
-    def __init__(self, dataframe, img_dir, tokenizer, image_processor, max_len,
-                 valid_indices=None, image_source="local", minio_bucket_images=None, minio_image_prefix=""):
+    def __init__(
+        self,
+        dataframe,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len,
+        valid_indices=None,
+        image_source="local",
+        minio_bucket_images=None,
+        minio_image_prefix="",
+    ):
         self.df = dataframe.reset_index(drop=True)
         self.img_dir = str(img_dir).rstrip("/")
         self.tokenizer = tokenizer
@@ -102,7 +126,9 @@ class SQLInferenceDataset(Dataset):
         real_idx = self.valid_indices[idx]
         row = self.df.iloc[real_idx]
 
-        text = f"{row['item_name']} {row['item_caption']}"
+        item_name = "" if pd.isna(row.get("item_name")) else str(row.get("item_name"))
+        item_caption = "" if pd.isna(row.get("item_caption")) else str(row.get("item_caption"))
+        text = f"{item_name} {item_caption}".strip()
 
         try:
             image_arr = load_image_as_rgb_array(
@@ -174,6 +200,7 @@ def load_registered_model_and_mlb(
     model_version: str | None = None,
     device: str = "cpu",
 ):
+    configure_mlflow_s3()
     mlflow.set_tracking_uri(tracking_uri)
     client = MlflowClient(tracking_uri=tracking_uri)
 
@@ -223,6 +250,8 @@ def predict(
     model_alias=None,
     model_version=None,
     model_name=None,
+    save_outputs=True,
+    save_db=True,
 ):
     """
     Full inference pipeline:
@@ -286,9 +315,24 @@ def predict(
     minio_bucket = ICE_CONFIG.get("minio_bucket_images")
     minio_prefix = ICE_CONFIG.get("minio_image_prefix", "")
 
-    print(f"Image source: {image_source}" + (f" (bucket={minio_bucket})" if image_source == "minio" else f" ({img_dir})"))
-    valid_idx = build_valid_indices(df_test.reset_index(drop=True), img_dir, image_source, minio_bucket, minio_prefix)
-    invalid_idx = [i for i in range(len(df_test)) if i not in set(valid_idx)]
+    print(
+        f"Image source: {image_source}"
+        + (
+            f" (bucket={minio_bucket})"
+            if image_source == "minio"
+            else f" ({img_dir})"
+        )
+    )
+
+    valid_idx = build_valid_indices(
+        df_test.reset_index(drop=True),
+        img_dir,
+        image_source,
+        minio_bucket,
+        minio_prefix,
+    )
+    valid_idx_set = set(valid_idx)
+    invalid_idx = [i for i in range(len(df_test)) if i not in valid_idx_set]
 
     infer_ds = SQLInferenceDataset(
         dataframe=df_test,
@@ -306,8 +350,9 @@ def predict(
         infer_ds,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=min(4, os.cpu_count() or 1),
+        num_workers=0,
         pin_memory=(device == "cuda"),
+        persistent_workers=False,
     )
 
     # --------------------------------------------------------
@@ -342,12 +387,17 @@ def predict(
             all_scores.append(probs_np)
             all_pred_matrix.append(preds)
 
-            for local_i, (row_idx, product_id, image_name, tags) in enumerate(zip(row_indices, product_ids, image_names, decoded)):
+            for local_i, (row_idx, product_id, image_name, tags) in enumerate(
+                zip(row_indices, product_ids, image_names, decoded)
+            ):
                 tag_list = list(tags)
                 predictions[row_idx] = tag_list
 
                 top_indices = np.argsort(probs_np[local_i])[::-1][:5]
-                top5_probs = {str(mlb.classes_[j]): float(probs_np[local_i][j]) for j in top_indices}
+                top5_probs = {
+                    str(mlb.classes_[j]): float(probs_np[local_i][j])
+                    for j in top_indices
+                }
 
                 prediction_rows.append({
                     "row_index": int(row_idx),
@@ -355,6 +405,11 @@ def predict(
                     "image_file_name": image_name,
                     "pred_labels": ", ".join(tag_list),
                     "top5_probs": json.dumps(top5_probs, ensure_ascii=False),
+                    "model_name": model_name,
+                    "model_version": resolved_model_version,
+                    "source_run_id": source_run_id,
+                    "split": split,
+                    "threshold": threshold,
                 })
 
     if len(all_scores) == 0:
@@ -372,6 +427,8 @@ def predict(
     # --------------------------------------------------------
     # Compute F1 if labels exist
     # --------------------------------------------------------
+    f1_micro = None
+
     if df_labels is not None and len(df_labels) > 0:
         from sklearn.metrics import f1_score
         from sklearn.preprocessing import MultiLabelBinarizer as MLB
@@ -385,45 +442,55 @@ def predict(
         mlb_eval.fit([mlb.classes_])
 
         y_true = mlb_eval.transform(df_labels["color_tags"].tolist())
-        f1 = f1_score(y_true[sorted(valid_idx)], pred_matrix, average="micro", zero_division=0)
-        print(f"  F1 micro (split={split}): {f1:.4f}")
+        f1_micro = f1_score(
+            y_true[sorted(valid_idx)],
+            pred_matrix,
+            average="micro",
+            zero_division=0,
+        )
+        print(f"  F1 micro (split={split}): {f1_micro:.4f}")
 
     # --------------------------------------------------------
     # Save predictions to DB
     # --------------------------------------------------------
-    # Keep SQL-first workflow: predictions linked to the model version used
-    valid_product_ids = [int(df_test.iloc[i]["product_id"]) for i in sorted(valid_idx)]
+    db_prediction_run_id = None
+    if save_db:
+        valid_product_ids = [int(df_test.iloc[i]["product_id"]) for i in sorted(valid_idx)]
 
-    db_prediction_run_id = (
-        f"ice_pred_model_{model_name}_v{resolved_model_version}_from_{source_run_id[:8]}"
-    )
+        db_prediction_run_id = (
+            f"ice_pred_model_{model_name}_v{resolved_model_version}_from_{source_run_id[:8]}"
+        )
 
-    save_predictions(
-        product_ids=valid_product_ids,
-        color_labels=mlb.classes_,
-        score_matrix=score_matrix,
-        pred_matrix=pred_matrix,
-        run_id=db_prediction_run_id,
-    )
+        print(f"Saving only valid-image predictions to DB: {len(valid_product_ids)} rows")
+
+        save_predictions(
+            product_ids=valid_product_ids,
+            color_labels=mlb.classes_,
+            score_matrix=score_matrix,
+            pred_matrix=pred_matrix,
+            run_id=db_prediction_run_id,
+        )
 
     # --------------------------------------------------------
     # Save CSV report
     # --------------------------------------------------------
-    output_df = pd.DataFrame({
-        "product_id": df_test["product_id"] if "product_id" in df_test.columns else pd.Series(range(len(df_test))),
-        "image_file_name": df_test["image_file_name"],
-        "color_tags": [str(predictions[i]) for i in range(len(df_test))],
-    })
-    output_df.to_csv(out_path, index=False)
+    details_path = None
+    if save_outputs:
+        output_df = pd.DataFrame({
+            "product_id": df_test["product_id"] if "product_id" in df_test.columns else pd.Series(range(len(df_test))),
+            "image_file_name": df_test["image_file_name"],
+            "color_tags": [json.dumps(predictions[i], ensure_ascii=False) for i in range(len(df_test))],
+        })
+        output_df.to_csv(out_path, index=False)
 
-    details_path = out_path.with_name(out_path.stem + "_details.csv")
-    pd.DataFrame(prediction_rows).to_csv(details_path, index=False)
+        details_path = out_path.with_name(out_path.stem + "_details.csv")
+        pd.DataFrame(prediction_rows).to_csv(details_path, index=False)
 
-    non_empty = sum(1 for t in predictions.values() if t)
-    print(f"\nSaved {len(output_df):,} predictions to {out_path}")
-    print(f"Saved detailed prediction report to {details_path}")
-    print(f"{non_empty:,} with tags ({non_empty / len(df_test):.1%})")
-    print(f"{len(df_test) - non_empty:,} empty")
+        non_empty = sum(1 for t in predictions.values() if t)
+        print(f"\nSaved {len(output_df):,} predictions to {out_path}")
+        print(f"Saved detailed prediction report to {details_path}")
+        print(f"{non_empty:,} with tags ({non_empty / len(df_test):.1%})")
+        print(f"{len(df_test) - non_empty:,} empty")
 
     print("\nModel source:")
     print(f"  model_name:    {model_name}")
@@ -434,13 +501,16 @@ def predict(
 
     return {
         "predictions": predictions,
-        "output_csv": str(out_path),
-        "details_csv": str(details_path),
+        "output_csv": str(out_path) if save_outputs else None,
+        "details_csv": str(details_path) if details_path else None,
         "model_name": model_name,
         "model_uri": resolved_model_uri,
         "model_version": resolved_model_version,
         "source_run_id": source_run_id,
         "db_run_id": db_prediction_run_id,
+        "f1_micro": f1_micro,
+        "split": split,
+        "threshold": threshold,
     }
 
 

@@ -1,54 +1,51 @@
-# -------------------------------------------------------
-# .dockerignore
-# Keeps build context lean, faster builds, smaller images
-# -------------------------------------------------------
-
-# Python cache
+# ─────────────────────────────
+# Python / Env
+# ─────────────────────────────
 .venv
-venv
+env
+ENV
 __pycache__
 *.pyc
 *.pyo
 *.pyd
-.Python
-.pytest_cache
-.ipynb_checkpoints
 
+# ─────────────────────────────
 # Git
+# ─────────────────────────────
 .git
 .gitignore
-.github
 
-# Data & models (mounted as volumes at runtime, not baked in)
-data/
-models/
-mlflow/
-mlruns/
+# ─────────────────────────────
+# Notebooks / Dev
+# ─────────────────────────────
+.ipynb_checkpoints
+notebooks
 
-# DVC (metadata only in image, actual data via volumes)
-*.dvc
-.dvc/tmp
-.dvc/cache
+# ─────────────────────────────
+# Data / Artifacts (WICHTIG)
+# ─────────────────────────────
+data
+mlruns
+mlartifacts
+models
+reports
 
-# Databases
-*.db
-*.sqlite
-*.sqlite3
+# große Dateien
+*.pth
+*.pt
+*.tar
+*.zip
+*.csv
 
-# Reports & notebooks (not needed in container)
-reports/
-notebooks/
-references/
+# ─────────────────────────────
+# Logs / temp
+# ─────────────────────────────
+*.log
+tmp
+temp
 
-# Build artifacts
-dist/
-build/
-*.egg-info
-
+# ─────────────────────────────
 # OS
+# ─────────────────────────────
 .DS_Store
-
-# Secrets (never bake these in!)
-.env
-*.pem
-*.key
+Thumbs.db

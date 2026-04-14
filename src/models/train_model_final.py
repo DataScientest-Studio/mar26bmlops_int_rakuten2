@@ -3,8 +3,9 @@ ICE DualEncoder — SQL-first training with MLflow tracking, reports,
 registry integration, champion/candidate comparison, and DB run logging.
 
 Usage:
-    python -m src.models.train_model_ice_sql_mlflow
-    python -m src.models.train_model_ice_sql_mlflow --epochs 15 --batch_size 8
+    python -m src.models.train_model_final
+    python -m src.models.train_model_final --epochs 15 --batch_size 8
+    python -m src.models.train_model_final --epochs 2 --batch_size 8 --data-fraction 0.3
 """
 
 import matplotlib
@@ -72,6 +73,21 @@ torch.backends.cudnn.benchmark = True
 # ============================================================
 # Helpers
 # ============================================================
+
+def configure_mlflow_s3() -> None:
+    """
+    Ensure MLflow artifact access works when backend/artifacts use MinIO / S3.
+    """
+    if MINIO_ENDPOINT:
+        endpoint = MINIO_ENDPOINT
+        if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
+            endpoint = f"http://{endpoint}"
+
+        os.environ["MLFLOW_S3_ENDPOINT_URL"] = endpoint
+        os.environ["AWS_ACCESS_KEY_ID"] = MINIO_ROOT_USER
+        os.environ["AWS_SECRET_ACCESS_KEY"] = MINIO_ROOT_PASSWORD
+        os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+
 
 def sanitize_params(params: dict) -> dict:
     clean = {}
@@ -308,11 +324,7 @@ class EarlyStopping:
 
 
 # ============================================================
-# Dataset
-# ============================================================
-
-# ============================================================
-# MinIO helpers  (merged from VR branch)
+# MinIO helpers
 # ============================================================
 
 _MINIO_CLIENT = None
@@ -322,9 +334,13 @@ def get_minio_client():
     """Singleton boto3 S3 client for MinIO."""
     global _MINIO_CLIENT
     if _MINIO_CLIENT is None:
+        endpoint = MINIO_ENDPOINT
+        if not str(endpoint).startswith("http://") and not str(endpoint).startswith("https://"):
+            endpoint = f"http://{endpoint}"
+
         _MINIO_CLIENT = boto3.client(
             "s3",
-            endpoint_url=f"http://{MINIO_ENDPOINT}",
+            endpoint_url=endpoint,
             aws_access_key_id=MINIO_ROOT_USER,
             aws_secret_access_key=MINIO_ROOT_PASSWORD,
         )
@@ -409,8 +425,19 @@ def build_valid_indices(
 
 
 class MultimodalColorDataset(Dataset):
-    def __init__(self, dataframe, encoded_labels, img_dir, tokenizer, image_processor, max_len,
-                 valid_indices=None, image_source="local", minio_bucket_images=None, minio_image_prefix=""):
+    def __init__(
+        self,
+        dataframe,
+        encoded_labels,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len,
+        valid_indices=None,
+        image_source="local",
+        minio_bucket_images=None,
+        minio_image_prefix="",
+    ):
         self.df = dataframe.reset_index(drop=True)
         self.encoded_labels = encoded_labels
         self.img_dir = str(img_dir).rstrip("/")
@@ -428,7 +455,10 @@ class MultimodalColorDataset(Dataset):
     def __getitem__(self, idx):
         real_idx = self.valid_indices[idx]
         row = self.df.iloc[real_idx]
-        text = f"{row['item_name']} {row['item_caption']}"
+
+        item_name = "" if pd.isna(row.get("item_name")) else str(row.get("item_name"))
+        item_caption = "" if pd.isna(row.get("item_caption")) else str(row.get("item_caption"))
+        text = f"{item_name} {item_caption}".strip()
 
         try:
             image_arr = load_image_as_rgb_array(
@@ -476,6 +506,38 @@ def _validate_aligned_split(df_x: pd.DataFrame, df_y: pd.DataFrame, split_name: 
         raise ValueError(f"Both df_x and df_y must include product_id for split={split_name}.")
     if not df_x["product_id"].equals(df_y["product_id"]):
         raise ValueError(f"product_id order mismatch for split={split_name}. Fix SQL ordering.")
+
+
+def apply_data_fraction(
+    x_df: pd.DataFrame,
+    y_vec: np.ndarray,
+    data_fraction: float,
+    random_state: int = 42,
+):
+    """
+    Reduce the training set size while keeping X and y aligned.
+    Used by compare_and_promote to run sequential experiments with increasing data volume.
+    """
+    if data_fraction is None or data_fraction >= 1.0:
+        return x_df.reset_index(drop=True), y_vec
+
+    if data_fraction <= 0:
+        raise ValueError("data_fraction must be > 0.")
+
+    n_rows = len(x_df)
+    n_keep = max(1, int(round(n_rows * data_fraction)))
+
+    sampled_idx = (
+        x_df.sample(n=n_keep, random_state=random_state)
+        .index
+        .sort_values()
+    )
+
+    x_small = x_df.loc[sampled_idx].reset_index(drop=True)
+    y_small = y_vec[sampled_idx]
+
+    print(f"Applied data_fraction={data_fraction:.3f}: {len(x_small):,}/{n_rows:,} training rows kept")
+    return x_small, y_small
 
 
 def prepare_train_val_data(train_split="train", val_split="val", mlb_path=None):
@@ -582,6 +644,7 @@ def train(config=None):
     cfg = {**ICE_CONFIG, **(config or {})}
     cfg_clean = sanitize_params(cfg)
 
+    configure_mlflow_s3()
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
 
@@ -605,37 +668,72 @@ def train(config=None):
         val_split=cfg.get("db_val", "val"),
         mlb_path=cfg["mlb_path"],
     )
+    # --------------------------------------------------------
+    # DEBUG LIMIT (optional)
+    # --------------------------------------------------------
+    MAX_ROWS = cfg.get("max_rows", None)
+
+    if MAX_ROWS:
+        X_tr = X_tr.head(MAX_ROWS).reset_index(drop=True)
+        y_tr = y_tr[:MAX_ROWS]
+
+        print(f"[DEBUG] Training rows limited to {len(X_tr)}")
+
+    data_fraction = float(cfg.get("data_fraction", 1.0))
+    X_tr, y_tr = apply_data_fraction(
+        x_df=X_tr,
+        y_vec=y_tr,
+        data_fraction=data_fraction,
+        random_state=int(cfg.get("random_state", 42)),
+    )
 
     img_dir = cfg["image_dir"]
     image_source = cfg.get("image_source", "local")
     minio_bucket = cfg.get("minio_bucket_images")
     minio_prefix = cfg.get("minio_image_prefix", "")
 
-    print(f"Image source: {image_source}" + (f" (bucket={minio_bucket})" if image_source == "minio" else f" ({img_dir})"))
+    print(
+        f"Image source: {image_source}"
+        + (f" (bucket={minio_bucket})" if image_source == "minio" else f" ({img_dir})")
+    )
     print("Validating training images...")
     train_valid = build_valid_indices(X_tr, img_dir, image_source, minio_bucket, minio_prefix)
     print("Validating validation images...")
     val_valid = build_valid_indices(X_va, img_dir, image_source, minio_bucket, minio_prefix)
 
     train_ds = MultimodalColorDataset(
-        X_tr, y_tr, img_dir, tokenizer, image_processor,
-        max_len=cfg["max_len"], valid_indices=train_valid,
-        image_source=image_source, minio_bucket_images=minio_bucket, minio_image_prefix=minio_prefix,
+        X_tr,
+        y_tr,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len=cfg["max_len"],
+        valid_indices=train_valid,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket,
+        minio_image_prefix=minio_prefix,
     )
     val_ds = MultimodalColorDataset(
-        X_va, y_va, img_dir, tokenizer, image_processor,
-        max_len=cfg["max_len"], valid_indices=val_valid,
-        image_source=image_source, minio_bucket_images=minio_bucket, minio_image_prefix=minio_prefix,
+        X_va,
+        y_va,
+        img_dir,
+        tokenizer,
+        image_processor,
+        max_len=cfg["max_len"],
+        valid_indices=val_valid,
+        image_source=image_source,
+        minio_bucket_images=minio_bucket,
+        minio_image_prefix=minio_prefix,
     )
 
-    num_workers = 1
+    num_workers = 0
     train_dl = DataLoader(
         train_ds,
         batch_size=cfg["batch_size"],
         shuffle=True,
         num_workers=num_workers,
         pin_memory=(device == "cuda"),
-        persistent_workers=(num_workers > 0),
+        persistent_workers=False,
     )
     val_dl = DataLoader(
         val_ds,
@@ -643,7 +741,7 @@ def train(config=None):
         shuffle=False,
         num_workers=num_workers,
         pin_memory=(device == "cuda"),
-        persistent_workers=(num_workers > 0),
+        persistent_workers=False,
     )
 
     dual_encoder = DualEncoder(cfg["text_model_id"], cfg["vision_model_id"]).to(device)
@@ -688,14 +786,21 @@ def train(config=None):
         "image_dir": str(img_dir),
         "db_train_split": str(cfg.get("db_train", "train")),
         "db_val_split": str(cfg.get("db_val", "val")),
+        "data_fraction": float(data_fraction),
     }
     data_manifest["dataset_version"] = json_sha256(data_manifest)
 
-    champion_model, champion_version = load_champion_model_if_exists(
-        client=client,
-        model_name=MLFLOW_REGISTERED_MODEL_NAME,
-        alias=MLFLOW_CHAMPION_ALIAS,
-        device=device,
+    skip_champion_compare = bool(cfg.get("skip_champion_compare", False))
+
+    if skip_champion_compare:
+        champion_model, champion_version = None, None
+        print("Skipping champion load/compare for this run.")
+    else:
+        champion_model, champion_version = load_champion_model_if_exists(
+            client=client,
+            model_name=MLFLOW_REGISTERED_MODEL_NAME,
+            alias=MLFLOW_CHAMPION_ALIAS,
+            device=device,
     )
 
     history = {
@@ -736,6 +841,7 @@ def train(config=None):
             "amp_enabled": str(use_amp),
             "source": "sql_first_pipeline",
             "previous_champion_exists": str(champion_version is not None),
+            "data_fraction": str(data_fraction),
         })
 
         log_json_artifact("data_manifest.json", data_manifest, artifact_path="metadata")
@@ -767,7 +873,10 @@ def train(config=None):
         )
         mlflow.log_artifact(str(class_dist_plot), artifact_path="reports")
 
-        print(f"\nTraining ICE (max_epochs={cfg['max_epochs']}, batch={cfg['batch_size']}, amp={'BF16' if use_amp else 'OFF'})\n")
+        print(
+            f"\nTraining ICE (max_epochs={cfg['max_epochs']}, batch={cfg['batch_size']}, "
+            f"data_fraction={data_fraction}, amp={'BF16' if use_amp else 'OFF'})\n"
+        )
 
         epochs_completed = 0
 
@@ -982,6 +1091,7 @@ def train(config=None):
             "best_val_recall_micro": float(final_metrics["micro_recall"]),
             "best_val_recall_macro": float(final_metrics["macro_recall"]),
             "dataset_version": data_manifest["dataset_version"],
+            "data_fraction": float(data_fraction),
         }
         final_summary_path = MODEL_DIR / "final_summary.json"
         final_summary_path.write_text(json.dumps(final_summary, indent=2), encoding="utf-8")
@@ -1000,7 +1110,6 @@ def train(config=None):
         model_info = mlflow.pytorch.log_model(
             pytorch_model=model,
             artifact_path="model",
-            registered_model_name=MLFLOW_REGISTERED_MODEL_NAME,
             pip_requirements=[
                 "torch",
                 "transformers",
@@ -1015,16 +1124,21 @@ def train(config=None):
             ],
         )
 
-        model_version = get_model_version_for_run(
-            client=client,
-            model_name=MLFLOW_REGISTERED_MODEL_NAME,
+        model_uri = f"runs:/{run_id}/model"
+        print(f"  Registering model from {model_uri}")
+
+        try:
+            client.get_registered_model(MLFLOW_REGISTERED_MODEL_NAME)
+        except Exception:
+            client.create_registered_model(MLFLOW_REGISTERED_MODEL_NAME)
+
+        mv = client.create_model_version(
+            name=MLFLOW_REGISTERED_MODEL_NAME,
+            source=model_uri,
             run_id=run_id,
         )
-        if model_version is None:
-            raise RuntimeError("Could not resolve registered model version for current MLflow run.")
-
-        current_version = str(model_version.version)
-
+        model_version = mv
+        current_version = str(mv.version)   
         champion_metrics = None
         champion_score = None
 
@@ -1069,6 +1183,7 @@ def train(config=None):
                 "val_f1_micro": challenger_score,
                 "val_f1_macro": final_metrics["macro_f1"],
                 "status": "champion" if promote_new_model else "candidate",
+                "data_fraction": float(data_fraction),
             },
         )
 
@@ -1103,6 +1218,8 @@ def train(config=None):
             "num_classes": int(len(mlb.classes_)),
             "new_model_score_for_selection": challenger_score,
             "best_model_score_after_selection": float(best_score_after_selection),
+            "train_rows_after_fraction": int(len(X_tr)),
+            "val_rows_total": int(len(X_va)),
         })
 
         run_payload = {
@@ -1113,6 +1230,9 @@ def train(config=None):
             "dataset_version": data_manifest["dataset_version"],
             "model_version": current_version,
             "promoted_to_champion": bool(promote_new_model),
+            "data_fraction": float(data_fraction),
+            "train_rows_after_fraction": int(len(X_tr)),
+            "val_rows_total": int(len(X_va)),
         }
 
         try:
@@ -1125,6 +1245,7 @@ def train(config=None):
         print(f"  Model URI: {model_info.model_uri}")
         print(f"  Registered model: {MLFLOW_REGISTERED_MODEL_NAME}")
         print(f"  Current version: {current_version}")
+        print(f"  Data fraction: {data_fraction}")
         print(f"  Selection result: {'NEW CHAMPION' if promote_new_model else 'OLD CHAMPION KEPT'}")
 
         return {
@@ -1136,6 +1257,7 @@ def train(config=None):
             "previous_champion_metrics": champion_metrics,
             "promote_new_model": promote_new_model,
             "dataset_version": data_manifest["dataset_version"],
+            "data_fraction": float(data_fraction),
         }
 
 
@@ -1150,6 +1272,10 @@ if __name__ == "__main__":
     parser.add_argument("--val_threshold", type=float, default=None)
     parser.add_argument("--unfreeze_layers", type=int, default=None)
     parser.add_argument("--es_min_delta", type=float, default=None)
+    parser.add_argument("--data-fraction", type=float, default=None)
+    parser.add_argument("--max-rows", type=int, default=None)
+    parser.add_argument("--skip-champion-compare", action="store_true")
+
     args = parser.parse_args()
 
     overrides = {}
@@ -1171,5 +1297,11 @@ if __name__ == "__main__":
         overrides["unfreeze_layers"] = args.unfreeze_layers
     if args.es_min_delta is not None:
         overrides["es_min_delta"] = args.es_min_delta
+    if args.data_fraction is not None:
+        overrides["data_fraction"] = args.data_fraction
+    if args.max_rows is not None:
+        overrides["max_rows"] = args.max_rows
+    if args.skip_champion_compare:
+        overrides["skip_champion_compare"] = True
 
     train(config=overrides)

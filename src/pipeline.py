@@ -3,13 +3,19 @@ Main pipeline: one call runs everything.
 
 Usage:
     python -m src.pipeline --mode ingest
-    python -m src.pipeline --mode ingest --mission_mode
     python -m src.pipeline --mode train
     python -m src.pipeline --mode predict
     python -m src.pipeline --mode full
+    python -m src.pipeline --mode compare
+    python -m src.pipeline --mode full_compare
+
+Examples:
+    python -m src.pipeline --mode compare --fractions 0.05 0.1 0.3 1.0
+    python -m src.pipeline --mode full_compare --fractions 0.05 0.1 0.3 1.0 --epochs 1
 """
 
 import argparse
+import json
 import os
 import sys
 from io import BytesIO
@@ -35,9 +41,9 @@ from src.config import (
     export_params,
 )
 from src.db import clear_products, get_db_summary, ingest_products, init_db
-from src.models.predict_model_ice_mk import predict
-from src.models.train_model_ice_mk import train
-
+from src.models.compare_and_promote import compare_and_promote
+from src.models.predict_model_final import predict
+from src.models.train_model_final import train
 
 export_params()  # sync params.yaml before every run
 
@@ -65,7 +71,7 @@ def read_csv_from_minio(bucket: str, key: str) -> pd.DataFrame:
 
 def load_all_data_from_minio():
     """Load train/test CSVs from MinIO."""
-    print("\n[1/6] Loading data from MinIO...")
+    print("\n[1/7] Loading data from MinIO...")
     print(f"  Endpoint: {MINIO_ENDPOINT}")
     print(f"  Bucket: {MINIO_BUCKET_DATA}")
     print(f"  X_train: {MINIO_X_TRAIN_KEY}")
@@ -76,6 +82,13 @@ def load_all_data_from_minio():
     df_y = read_csv_from_minio(MINIO_BUCKET_DATA, MINIO_Y_TRAIN_KEY)
     df_test = read_csv_from_minio(MINIO_BUCKET_DATA, MINIO_X_TEST_KEY)
 
+    # DEBUG MODE
+    max_rows = 500
+    df_x = df_x.head(max_rows)
+    df_y = df_y.head(max_rows)
+    df_test = df_test.head(max_rows)
+
+    print(f"[DEBUG] Using subset: {len(df_x)} rows")
     print(f"  Train rows: {len(df_x)}")
     print(f"  Label rows: {len(df_y)}")
     print(f"  Test rows : {len(df_test)}")
@@ -84,10 +97,8 @@ def load_all_data_from_minio():
 
 def ingest_into_db(df_x, df_y, df_test, mission_mode=False):
     """Initialize and populate DB."""
-    train_x, val_x, train_y, val_y = None, None, None, None
-
     if not mission_mode:
-        print("\n[2/6] Train/Val split...")
+        print("\n[2/7] Train/Val split...")
         train_x, val_x, train_y, val_y = train_test_split(
             df_x,
             df_y,
@@ -97,9 +108,10 @@ def ingest_into_db(df_x, df_y, df_test, mission_mode=False):
         )
         print(f"  Train={len(train_x)}, Val={len(val_x)}")
     else:
-        print("\n[2/6] Mission mode — no split, all data used for training")
+        print("\n[2/7] Mission mode — no split, all data used for training")
+        train_x, val_x, train_y, val_y = None, None, None, None
 
-    print("\n[3/6] Filling database...")
+    print("\n[3/7] Filling database...")
     init_db()
     clear_products()
 
@@ -113,7 +125,6 @@ def ingest_into_db(df_x, df_y, df_test, mission_mode=False):
 
     summary = get_db_summary()
     print(f"  DB summary: {summary}")
-
     return summary
 
 
@@ -121,64 +132,38 @@ def maybe_copy_mirco_db():
     """Kept only for Mirco's local setup."""
     if os.getenv("USER") == "mirco":
         import shutil
+
         shutil.copy(
             "/home/mirco/rakuten2/db/rakuten_colors.db",
-            "/mnt/c/02_Project_MLOPS/rakuten_colors.db"
+            "/mnt/c/02_Project_MLOPS/rakuten_colors.db",
         )
         print("DB Copy to local for Mirco only")
 
-    python -m src.pipeline --mode ingest              # DB ingest only (dev)
-    python -m src.pipeline --mode ingest --mission_mode  # DB ingest (all data)
-    python -m src.pipeline --mode train               # Training only
-    python -m src.pipeline --mode predict             # Prediction only
-    python -m src.pipeline --mode full                # Full run
-"""
-import argparse
-import numpy as np
-import pandas as pd
-from pathlib import Path
-from sklearn.model_selection import train_test_split
-from src.config import export_params
-export_params() # sync params.yaml before every run
 
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from src.config import (
-    DATA_DIR, ICE_CONFIG, MLFLOW_EXPERIMENT
-)
-from src.db import init_db, ingest_products, get_db_summary, clear_products
-from src.models.train_model_final import train
-from src.models.predict_model_final import predict
-from src.data.load_data_s3 import load_all_data
-
-
-
-
-def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=None):
+def run_pipeline(
+    mode="full",
+    real=False,
+    mission_mode=False,
+    config_overrides=None,
+    fractions=None,
+    compare_threshold=None,
+):
     """
-    Runs the full pipeline.
+    Run the pipeline.
 
     Args:
-        mode:             'full', 'ingest', 'train', 'predict'
-        real:             kept for compatibility
-        mission_mode:     True = use all training data
-        real:             True = real Rakuten data, False = mock data
-        mission_mode:     True = use all training data (Rakuten Challenge)
-        config_overrides: Dict with config overrides
+        mode: 'full', 'ingest', 'train', 'predict', 'compare', 'full_compare'
+        real: kept only for compatibility
+        mission_mode: True = use all training data
+        config_overrides: dict with config overrides
+        fractions: list of training fractions for compare_and_promote
+        compare_threshold: optional threshold for compare_and_promote evaluation
     """
     print("=" * 60)
     print("RAKUTEN COLOR EXTRACTION PIPELINE")
     print(f"  Mode: {mode} | Data: MinIO | Mission: {mission_mode}")
     print("=" * 60)
 
-    df_x, df_y, df_test = None, None, None
-    db_summary = None
-    train_result = None
-    predict_result = None
-    run_id = None
-
-    # Robust approach: always ingest from MinIO before downstream steps
     df_x, df_y, df_test = load_all_data_from_minio()
     db_summary = ingest_into_db(df_x, df_y, df_test, mission_mode=mission_mode)
 
@@ -192,9 +177,13 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
             "db_summary": db_summary,
         }
 
-    # -- 4. Training --
+    train_result = None
+    compare_result = None
+    predict_result = None
+    run_id = None
+
     if mode in ("full", "train"):
-        print("\n[4/6] ICE DualEncoder training...")
+        print("\n[4/7] ICE DualEncoder training...")
         config = {**ICE_CONFIG, **(config_overrides or {})}
         train_result = train(config=config)
         run_id = train_result.get("run_id")
@@ -215,8 +204,39 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
             "train_result": train_result,
         }
 
-    # -- 5. Test prediction --
-    print("\n[5/6] Predicting test set...")
+    if mode in ("compare", "full_compare"):
+        print("\n[4/7] Running compare_and_promote automation...")
+
+        effective_fractions = fractions or [0.05, 0.1, 0.3, 1.0]
+
+        compare_result = compare_and_promote(
+            train_module="src.models.train_model_final",
+            model_name=ICE_CONFIG["registered_model_name"]
+            if "registered_model_name" in ICE_CONFIG
+            else "rakuten-ice-dual-encoder",
+            eval_split="val",
+            fractions=effective_fractions,
+            threshold=compare_threshold,
+            epochs=(config_overrides or {}).get("max_epochs"),
+            batch_size=(config_overrides or {}).get("batch_size"),
+            extra_train_args=None,
+            assign_candidate=True,
+            compare_with_existing_champion=True,
+        )
+
+        print("\nCompare-and-promote summary:")
+        print(json.dumps(compare_result, indent=2))
+
+    if mode == "compare":
+        print("\nDone (compare only).")
+        return {
+            "mode": "compare",
+            "status": "success",
+            "db_summary": db_summary,
+            "compare_result": compare_result,
+        }
+
+    print("\n[5/7] Predicting test set...")
     out_path = Path("data") / "submissions" / "y_pred_test.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -236,8 +256,7 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
             "prediction_path": str(out_path),
         }
 
-    # -- 6. Submission --
-    print("\n[6/6] Creating submission...")
+    print("\n[6/7] Creating submission...")
     sub_path = Path("data") / "submissions" / "submission_ice_v1.csv"
     sub_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -250,6 +269,7 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
     results = pd.read_csv(out_path)
     results.to_csv(sub_path, index=False)
 
+    print("\n[7/7] Logging pipeline artifacts to MLflow...")
     try:
         mlflow.set_experiment(MLFLOW_EXPERIMENT)
         with mlflow.start_run(run_name="ice_dual_encoder_full_pipeline"):
@@ -257,7 +277,11 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
             mlflow.log_param("mode", mode)
             if run_id is not None:
                 mlflow.log_param("training_run_id", run_id)
+            if fractions is not None:
+                mlflow.log_param("fractions", ",".join(map(str, fractions)))
             mlflow.log_artifact(str(sub_path))
+            if out_path.exists():
+                mlflow.log_artifact(str(out_path))
     except Exception as e:
         print(f"  MLflow logging skipped: {e}")
 
@@ -271,95 +295,11 @@ def run_pipeline(mode="full", real=False, mission_mode=False, config_overrides=N
         "status": "success",
         "db_summary": db_summary,
         "train_result": train_result,
+        "compare_result": compare_result,
         "prediction_result": predict_result,
         "prediction_path": str(out_path),
         "submission_path": str(sub_path),
     }
-    print(f"  Mode: {mode} | Data: {'real' if real else 'mock'} | Mission: {mission_mode}")
-    print("=" * 60)
-
-    # -- 1. Load data -- (local or Minio, controlled by IMAGE_SOURCE)
-    df_x, df_y, df_test = load_all_data()
-
-    # -- 2. Train/Val split (dev mode only) --
-    if not mission_mode:
-        print("\n[2/6] Train/Val split...")
-        train_x, val_x, train_y, val_y = train_test_split(
-            df_x, df_y, test_size=0.1, random_state=42
-        )
-        print(f"  Train={len(train_x)}, Val={len(val_x)}")
-    else:
-        print("\n[2/6] Mission mode — no split, all data used for training")
-
-    # -- 3. Fill database --
-    if mode in ("full", "ingest"):
-        print("\n[3/6] Filling database...")
-        init_db()
-        clear_products()
-        if mission_mode:
-            # All labeled data for training
-            ingest_products(df_x,    df_y,     split="train")
-            ingest_products(df_test, df_y=None, split="test")
-        else:
-            # Dev mode: 90/10 split
-            ingest_products(train_x, train_y, split="train")
-            ingest_products(val_x,   val_y,   split="val")
-            ingest_products(df_test, df_y=None, split="test")
-
-        summary = get_db_summary()
-        print(f"  DB: {summary['products_by_split']}")
-
-    # import os
-    # if os.getenv("USER") == "mirco":
-    #     import shutil
-    #     shutil.copy(
-    #         "/home/mirco/rakuten2/db/rakuten.db",
-    #         "/mnt/c/02_Project_MLOPS/rakuten_colors.db"
-    #     )
-    #     print("DB Copy to local for Mirco only")
-
-    # if mode == "ingest":
-    #     print("\nDone (ingest only).")
-    #     return
-
-    # -- 4. ICE DualEncoder training --
-    if mode in ("full", "train"):
-        print("\n[4/6] ICE DualEncoder training...")
-        config = {**ICE_CONFIG, **(config_overrides or {})}
-        result = train(config=config)          # dict
-        run_id = result["run_id"]              # if needed
-
-    if mode == "train":
-        print("\nDone (train only).")
-        return result
-
-    # -- 5. Test set prediction --
-    if mode in ("full", "predict"):
-        print("\n[5/6] Predicting test set...")
-        out_path = DATA_DIR / "submissions" / "y_pred_test.csv"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        predict(split="test", out_path=str(out_path))
-
-    # -- 6. Submission --
-    if mode == "full":
-        print("\n[6/6] Creating submission...")
-        sub_path = DATA_DIR / "submissions" / "submission_ice_v1.csv"
-        results = pd.read_csv(out_path)
-        results.to_csv(sub_path, index=False)
-
-        try:
-            import mlflow
-            mlflow.set_experiment(MLFLOW_EXPERIMENT)
-            with mlflow.start_run(run_name="ice_dual_encoder_full"):
-                mlflow.log_param("mission_mode", mission_mode)
-                mlflow.log_artifact(str(sub_path))
-        except Exception:
-            pass
-
-        print("\n" + "=" * 60)
-        print("PIPELINE DONE!")
-        print(f"  Submission: {sub_path}")
-        print("=" * 60)
 
 
 if __name__ == "__main__":
@@ -367,18 +307,31 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         default="ingest",
-        choices=["full", "ingest", "train", "predict"]
+        choices=["full", "ingest", "train", "predict", "compare", "full_compare"],
     )
     parser.add_argument("--real", action="store_true")
     parser.add_argument(
         "--mission_mode",
         action="store_true",
-        help="Mission mode: use all training data"
+        help="Mission mode: use all training data",
     )
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--encoder_lr", type=float, default=None)
+    parser.add_argument(
+        "--fractions",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Fractions for compare_and_promote, e.g. --fractions 0.05 0.1 0.3 1.0",
+    )
+    parser.add_argument(
+        "--compare-threshold",
+        type=float,
+        default=None,
+        help="Optional threshold for compare_and_promote evaluation",
+    )
     args = parser.parse_args()
 
     overrides = {}
@@ -390,34 +343,12 @@ if __name__ == "__main__":
         overrides["batch_size"] = args.batch_size
     if args.encoder_lr is not None:
         overrides["encoder_lr"] = args.encoder_lr
-    parser.add_argument("--mode", default="ingest",                                                                         # mk Change here pipline mode for more then just DB creation! for now ingest only
-                        choices=["full", "ingest", "train", "predict"])
-    parser.add_argument("--real", action="store_true")
-    parser.add_argument("--mission_mode", action="store_true",                                                              # switch for  store_true -> split xtrain into 80 /10 val /10 pseudo_test mode 
-                        help="Mission mode: use all training data (Rakuten Challenge)")
-    parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument("--lr",     type=float, default=None)
-    args = parser.parse_args()
-
-    overrides = {}
-    if args.epochs: overrides["max_epochs"] = args.epochs
-    if args.lr:     overrides["learning_rate"] = args.lr
 
     run_pipeline(
         mode=args.mode,
         real=args.real,
         mission_mode=args.mission_mode,
         config_overrides=overrides,
+        fractions=args.fractions,
+        compare_threshold=args.compare_threshold,
     )
-        config_overrides=overrides
-    )
-
-
-
-# Space mk: Dev
-# cp /home/mirco/rakuten2/db/rakuten_colors.db /mnt/c/02_Project_MLOPS/ 
-# mlflow server \
-# --backend-store-uri mlruns \
-# --default-artifact-root mlruns \
-# --host 0.0.0.0 \
-# --port 5000
