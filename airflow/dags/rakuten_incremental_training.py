@@ -31,7 +31,7 @@ def task_check_prerequisites(**context):
 
     # Check DB
     db_path = "/opt/airflow/app/db/rakuten.db"
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(f"file:{db_path}?immutable=1", uri=True)
     cur = conn.cursor()
     cur.execute("SELECT split, COUNT(*) FROM products GROUP BY split")
     counts = dict(cur.fetchall())
