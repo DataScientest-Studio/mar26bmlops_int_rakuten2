@@ -11,6 +11,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   minio:
     image: minio/minio:latest
@@ -20,17 +25,23 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   minio-init:
     image: minio/mc:latest
     container_name: minio_init
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     env_file:
       - .env
     entrypoint: >
@@ -51,9 +62,10 @@ services:
     container_name: mlflow
     restart: unless-stopped
     depends_on:
-      - postgres
-      - minio
-      - minio-init
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
@@ -68,35 +80,70 @@ services:
       --default-artifact-root s3://mlflow/
       --host 0.0.0.0
       --port 5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   api:
     build: .
     container_name: rakuten_api
     restart: unless-stopped
     depends_on:
-      - postgres
-      - mlflow
-      - minio
+      mlflow:
+        condition: service_healthy
     env_file:
       - .env
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./db:/app/db
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 
+  # -- GPU training container (mk) --
+  # Usage: docker compose --profile training run --rm training
+  # For CPU teammates: docker compose --profile training build --build-arg TORCH_INDEX=cpu training
   training:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.training
     container_name: rakuten_training
-    restart: "no"
-    depends_on:
-      - postgres
-      - mlflow
-      - minio
     env_file:
       - .env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    depends_on:
+      mlflow:
+        condition: service_healthy
     volumes:
-      - .:/app
-    working_dir: /app
-    command: sleep infinity
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./db:/app/db
+    shm_size: '4gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: python -m src.models.train_model_final
+    profiles:
+      - training
+
+  adminer:
+    image: adminer
+    container_name: rakuten_adminer
+    ports:
+      - "5050:8080"
+    restart: unless-stopped
 
 volumes:
   postgres_data:
