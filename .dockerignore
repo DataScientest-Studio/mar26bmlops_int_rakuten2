@@ -49,3 +49,25 @@ temp
 # ─────────────────────────────
 .DS_Store
 Thumbs.db
+
+
+venv/
+.venv/
+data/images/
+data/images_hidden/
+data/raw/
+mlflow/
+mlruns/
+.dvc/cache/
+.git/
+__pycache__/
+*.pyc
+*.pth
+*.pkl
+*.tar
+*.zip
+*.7z
+*.vhdx
+node_modules/
+mc.exe
+airflow/logs/

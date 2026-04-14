@@ -61,7 +61,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
       _PIP_ADDITIONAL_REQUIREMENTS: >-
         mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
-        numpy==1.26.4 pillow tqdm pyyaml python-dotenv
+        numpy==1.26.4 pillow tqdm pyyaml python-dotenv docker
         torch --extra-index-url https://download.pytorch.org/whl/cpu
         transformers fugashi unidic-lite
     ports:
@@ -95,10 +95,11 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
       _PIP_ADDITIONAL_REQUIREMENTS: >-
         mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
-        numpy==1.26.4 pillow tqdm pyyaml python-dotenv
+        numpy==1.26.4 pillow tqdm pyyaml python-dotenv docker
         torch --extra-index-url https://download.pytorch.org/whl/cpu
         transformers fugashi unidic-lite
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./airflow/dags:/opt/airflow/dags
       - .:/opt/airflow/app
     depends_on:
