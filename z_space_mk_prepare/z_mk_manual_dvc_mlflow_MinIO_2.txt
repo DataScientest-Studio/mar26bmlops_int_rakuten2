@@ -1,0 +1,254 @@
+# Rakuten MLOps — Command Reference
+
+## Grundregel: Alles hoch-/runterfahren
+
+```bash
+# ALLES starten (inkl. Airflow)
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
+
+# ALLES stoppen (inkl. Airflow)
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml down
+
+# Nur Basis-Services (ohne Airflow)
+docker compose up -d
+docker compose down
+
+# Notfall: alles killen
+docker kill $(docker ps -q)
+docker rm $(docker ps -aq)
+docker network prune -f
+```
+
+---
+
+## Erster Start (einmalig)
+
+```bash
+# Postgres-DBs anlegen
+docker exec -it rakuten_postgres psql -U postgres -c "CREATE DATABASE rakuten;" 2>/dev/null
+docker exec -it rakuten_postgres psql -U postgres -c "CREATE DATABASE mlflow_meta;" 2>/dev/null
+docker exec -it rakuten_postgres psql -U postgres -c "CREATE DATABASE airflow;" 2>/dev/null
+
+# Airflow initialisieren
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml run --rm airflow-init
+
+# Docker-Socket für Airflow freigeben (nach jedem Neustart nötig)
+docker exec -u root rakuten_airflow_scheduler chmod 666 /var/run/docker.sock
+```
+
+---
+
+## Lokale Entwicklung (WSL)
+
+```bash
+# Env laden + MLflow starten
+source start_local_dev.sh
+
+# Nur Env laden, kein MLflow
+source start_local_dev.sh --no-mlflow
+
+# MLflow manuell starten
+mlflow server \
+  --backend-store-uri sqlite:///./mlflow/mlflow.db \
+  --default-artifact-root ./mlflow/artifacts \
+  --host 0.0.0.0 --port 5000
+
+# MLflow stoppen
+pkill -f "mlflow server"
+lsof -i :5000   # prüfen ob Port frei
+```
+
+---
+
+## DVC
+
+```bash
+# Pipeline komplett neu
+dvc repro
+
+# Nur Training
+dvc repro train
+
+# Erzwingen (auch wenn nichts geändert)
+dvc repro train --force
+
+# Nach Training: sichern
+dvc commit
+dvc push                  # → DagsHub (default)
+dvc push -r minio         # → MinIO lokal
+
+# Remote-Credentials setzen (lokal, nicht in Git)
+dvc remote modify dagshub --local auth basic
+dvc remote modify dagshub --local user MircoK90
+dvc remote modify dagshub --local password <TOKEN>
+
+dvc remote modify minio --local access_key_id admin
+dvc remote modify minio --local secret_access_key pwd_123_SIMV
+```
+
+---
+
+## Git
+
+```bash
+# Standard-Commit nach Training
+git add dvc.lock params.yaml
+git commit -m "feat: training run — ICE v$(date +%Y%m%d)"
+git push origin       # → DataScientest Repo
+git push myfork       # → MircoK90 Fork → DagsHub
+
+# Fork als Remote hinzufügen (einmalig)
+git remote add myfork git@github.com:MircoK90/mar26bmlops_int_rakuten2.git
+
+# Snapshot erstellen
+git archive --format=zip --output=projekt_snapshot.zip HEAD
+```
+
+---
+
+## Training lokal (ohne Airflow)
+
+```bash
+# Env laden
+set -a; source .env; source .env.local; set +a
+
+# DB befüllen (Sonja-Variante mit SQLite)
+DB_BACKEND=sqlite POSTGRES_HOST=localhost python -c "
+import pandas as pd
+from src.config import DATA_DIR
+from src.db import init_db, ingest_products, clear_products, get_db_summary
+from sklearn.model_selection import train_test_split
+df_x    = pd.read_csv(DATA_DIR / 'raw' / 'X_train.csv')
+df_y    = pd.read_csv(DATA_DIR / 'raw' / 'y_train.csv')
+df_test = pd.read_csv(DATA_DIR / 'raw' / 'X_test.csv')
+train_x, val_x, train_y, val_y = train_test_split(df_x, df_y, test_size=0.1, random_state=42)
+init_db(); clear_products()
+ingest_products(train_x, train_y, split='train')
+ingest_products(val_x,   val_y,   split='val')
+ingest_products(df_test, df_y=None, split='test')
+print(get_db_summary())
+"
+
+# 8 Runs mit steigenden Datenmengen
+python -m src.models.compare_and_promote \
+  --fractions 0.524 0.576 0.629 0.681 0.733 0.786 0.838 0.890 \
+  --epochs 3 \
+  --eval-split val
+```
+
+---
+
+## Airflow
+
+```bash
+# DAG manuell triggern
+docker exec rakuten_airflow_scheduler airflow dags trigger rakuten_incremental_training
+
+# Scheduler/Webserver neustarten (nach DAG-Änderungen)
+docker restart rakuten_airflow_scheduler rakuten_airflow_web
+
+# Alle Tasks eines Runs löschen
+docker exec rakuten_airflow_scheduler airflow tasks clear rakuten_incremental_training -y
+
+# Live-Log eines Tasks
+docker exec rakuten_airflow_scheduler bash -c \
+  'RUN=$(ls -t /opt/airflow/logs/dag_id=rakuten_incremental_training/ | head -1); \
+   tail -f "/opt/airflow/logs/dag_id=rakuten_incremental_training/$RUN/task_id=train_run_1/attempt=1.log"'
+
+# Letzten Log ausgeben
+docker exec rakuten_airflow_scheduler bash -c \
+  'RUN=$(ls -t /opt/airflow/logs/dag_id=rakuten_incremental_training/ | head -1); \
+   cat "/opt/airflow/logs/dag_id=rakuten_incremental_training/$RUN/task_id=train_run_1/attempt=1.log"' | tail -30
+```
+
+---
+
+## MLflow
+
+```bash
+# Letzten Run in DB abfragen (SQLite)
+sqlite3 mlflow/mlflow.db "
+SELECT r.run_uuid, m.key, m.value
+FROM runs r JOIN metrics m ON r.run_uuid = m.run_uuid
+ORDER BY r.start_time DESC LIMIT 10;"
+
+# Modell registrieren
+python -c "
+import mlflow
+mlflow.set_tracking_uri('http://localhost:5000')
+client = mlflow.MlflowClient()
+runs = client.search_runs('1', order_by=['start_time DESC'], max_results=1)
+run_id = runs[0].info.run_id
+mlflow.register_model(f'runs:/{run_id}/model', 'rakuten-ice-dual-encoder')
+"
+```
+
+---
+
+## MinIO
+
+```bash
+# Buckets prüfen (UI)
+# http://localhost:9001  →  admin / pwd_123_SIMV
+
+# Daten hochladen
+mc alias set local http://localhost:9000 admin pwd_123_SIMV
+mc cp data/raw/X_train.csv local/data/
+mc ls local/images | wc -l
+
+# Bilder nach MinIO pushen (DVC)
+dvc push -r minio data/images.dvc
+```
+
+---
+
+## Berechtigungen (nach Problemen)
+
+```bash
+# MLflow-Ordner
+chmod -R u+rwx mlflow/
+sudo chmod -R 777 mlflow/
+
+# Airflow DAGs
+sudo chown -R 50000:0 airflow/dags/
+chmod -R 755 airflow/dags/
+
+# Airflow Docker-Socket
+docker exec -u root rakuten_airflow_scheduler chmod 666 /var/run/docker.sock
+```
+
+---
+
+## URLs
+
+| Service   | URL                        | Login          |
+|-----------|----------------------------|----------------|
+| MLflow    | http://localhost:5000      | —              |
+| Airflow   | http://localhost:8080      | admin / admin  |
+| MinIO UI  | http://localhost:9001      | admin / pwd_123_SIMV |
+| Adminer   | http://localhost:5050      | postgres/postgres |
+| API       | http://localhost:8000/docs | —              |
+| DagsHub   | https://dagshub.com/MircoK90/mar26bmlops_int_rakuten2 | — |
+
+
+#  postgres fill nach löschenset -a; source .env; source .env.local; set +a
+# .env.local temporär auf postgres umstellen:
+export DB_BACKEND=postgres
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rakuten
+
+python -c "
+import pandas as pd
+from src.config import DATA_DIR
+from src.db import init_db, ingest_products, clear_products, get_db_summary
+from sklearn.model_selection import train_test_split
+df_x    = pd.read_csv(DATA_DIR / 'raw' / 'X_train.csv')
+df_y    = pd.read_csv(DATA_DIR / 'raw' / 'y_train.csv')
+df_test = pd.read_csv(DATA_DIR / 'raw' / 'X_test.csv')
+train_x, val_x, train_y, val_y = train_test_split(df_x, df_y, test_size=0.1, random_state=42)
+init_db(); clear_products()
+ingest_products(train_x, train_y, split='train')
+ingest_products(val_x,   val_y,   split='val')
+ingest_products(df_test, df_y=None, split='test')
+print(get_db_summary())
+"
+
