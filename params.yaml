@@ -1,17 +1,17 @@
 ICE_CONFIG:
   batch_size: 128
-  checkpoint_path: /app/models/color_model_best.pth
+  checkpoint_path: /home/mirco/rakuten2/models/color_model_best.pth
   db_train: train
   encoder_lr: 2.0e-05
   es_patience: 3
-  image_dir: /app/data/images
-  image_source: minio
+  image_dir: /home/mirco/rakuten2/data/images
+  image_source: local
   learning_rate: 0.003
   max_epochs: 1
   max_len: 128
   minio_bucket_images: images
   minio_image_prefix: ''
-  mlb_path: /app/models/mlb.pkl
+  mlb_path: /home/mirco/rakuten2/models/mlb.pkl
   predict_split: val
   text_model_id: cl-tohoku/bert-base-japanese-v3
   train_threshold: 0.5

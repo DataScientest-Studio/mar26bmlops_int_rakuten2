@@ -1,9 +1,13 @@
-# airflow/dags/rakuten_incremental_training.py
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
+
+#in contaienr always correct
+db_url = "postgresql://postgres:postgres@postgres:5432/rakuten"
 
 TOTAL_TRAIN = 190_908
+APP_ROOT = "/opt/airflow/app"
 
 RUN_CONFIGS = []
 for i, n_images in enumerate(range(100_000, 180_000, 10_000)):
@@ -22,16 +26,38 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
+# Docker command template for GPU training
+DOCKER_TRAIN_CMD = (
+    "docker run --rm --gpus all "
+    "--shm-size=4g "
+    "--network rakuten2_default "
+    "-v /home/mirco/rakuten2/data:/app/data "
+    "-v /home/mirco/rakuten2/models:/app/models "
+    "-v /home/mirco/rakuten2/db:/app/db "
+    "-w /app "
+    "-e MLFLOW_TRACKING_URI=http://mlflow:5000 "
+    "-e AWS_ACCESS_KEY_ID=admin "
+    "-e AWS_SECRET_ACCESS_KEY=pwd_123_SIMV "
+    "-e MLFLOW_S3_ENDPOINT_URL=http://minio:9000 "
+    "-e DATABASE_URL=postgresql://postgres:postgres@postgres:5432/rakuten "
+    "-e DB_BACKEND=postgres "
+    "-e IMAGE_SOURCE=local "
+    "rakuten2-training "
+    "python -m src.models.train_model_final "
+    "--data-fraction {fraction} --epochs {epochs}"
+)
+
 
 def task_check_prerequisites(**context):
     """Verify DB is populated and MLflow is reachable."""
-    import mlflow
-    import sqlite3
     import os
+    import sqlite3
+    import mlflow
 
-    # Check DB
-    db_path = "/opt/airflow/app/db/rakuten.db"
-    conn = sqlite3.connect(f"file:{db_path}?immutable=1", uri=True)
+    # Check DB via Postgres
+    import psycopg2
+    # db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/rakuten")
+    conn = psycopg2.connect(db_url)
     cur = conn.cursor()
     cur.execute("SELECT split, COUNT(*) FROM products GROUP BY split")
     counts = dict(cur.fetchall())
@@ -45,118 +71,55 @@ def task_check_prerequisites(**context):
     experiments = mlflow.search_experiments()
     print(f"MLflow reachable, {len(experiments)} experiments found")
 
-    context["ti"].xcom_push(key="run_configs", value=RUN_CONFIGS)
-
-
-def task_train_run(run_index: int, data_fraction: float, epochs: int, **context):
-    """Execute one training run with the given data fraction."""
-    import sys
-    sys.path.insert(0, "/opt/airflow/app")
-
-    print(f"\n{'='*60}")
-    print(f"TRAINING RUN {run_index}/8 — fraction={data_fraction} "
-          f"(~{int(data_fraction * TOTAL_TRAIN):,} images), epochs={epochs}")
-    print(f"{'='*60}")
-
-    from src.config import ICE_CONFIG
-    from src.models.train_model_ice_mk import train
-
-    # Override config for this run
-    config = {
-        **ICE_CONFIG,
-        "max_epochs": epochs,
-        "val_ratio": data_fraction,   # use fraction as val split proxy
-    }
-
-    classifier, dual_encoder, mlb, run_id = train(config=config)
-
-    summary = {
-        "run_index": run_index,
-        "data_fraction": data_fraction,
-        "run_id": run_id,
-    }
-    context["ti"].xcom_push(key=f"run_{run_index}_result", value=summary)
-    print(f"Run {run_index} done — MLflow run_id: {run_id}")
-    return summary
-
 
 def task_compare_and_promote(**context):
     """Compare all runs and promote best model to champion."""
-    import sys
-    sys.path.insert(0, "/opt/airflow/app")
-
-    from mlflow.tracking import MlflowClient
     import os
+    import mlflow
+    from mlflow.tracking import MlflowClient
 
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+    mlflow.set_tracking_uri(tracking_uri)
     client = MlflowClient(tracking_uri=tracking_uri)
+    model_name = os.getenv("MLFLOW_REGISTERED_MODEL_NAME", "rakuten-ice-dual-encoder")
 
-    ti = context["ti"]
-    results = []
-    for i in range(1, 9):
-        r = ti.xcom_pull(key=f"run_{i}_result", task_ids=f"train_run_{i}")
-        if r:
-            results.append(r)
+    # Get all model versions, find the 8 most recent
+    versions = client.search_model_versions(f"name='{model_name}'")
+    if not versions:
+        raise RuntimeError("No model versions found")
 
-    if not results:
-        raise RuntimeError("No training results found in XCom")
+    recent = sorted(versions, key=lambda v: int(v.version), reverse=True)[:8]
 
-    # Find best run by val_f1_micro from MLflow
     best = None
     best_f1 = -1
-    for r in results:
-        run = client.get_run(r["run_id"])
+    results = []
+
+    for v in recent:
+        run = client.get_run(v.run_id)
         f1 = run.data.metrics.get("best_val_f1_micro", 0)
-        r["val_f1_micro"] = f1
+        results.append({"version": v.version, "run_id": v.run_id, "f1": f1})
         if f1 > best_f1:
             best_f1 = f1
-            best = r
+            best = v
 
-    print(f"\nBest run: {best['run_index']} — F1={best_f1:.4f} — run_id={best['run_id']}")
+    print(f"\n{'='*60}")
+    for r in sorted(results, key=lambda x: x["f1"], reverse=True):
+        marker = " ★" if r["version"] == best.version else ""
+        print(f"  v{r['version']}  F1={r['f1']:.4f}{marker}")
+    print(f"{'='*60}")
 
-    # Find model version for best run
-    versions = client.search_model_versions("name='rakuten-ice-dual-encoder'")
-    for v in versions:
-        if v.run_id == best["run_id"]:
-            client.set_registered_model_alias(
-                name="rakuten-ice-dual-encoder",
-                alias="champion",
-                version=v.version,
-            )
-            print(f"Champion set: version {v.version}")
-            break
-
-    ti.xcom_push(key="best_run_id", value=best["run_id"])
-
-
-def task_predict_test(**context):
-    """Run prediction on the test split using champion model."""
-    import sys
-    sys.path.insert(0, "/opt/airflow/app")
-
-    from src.models.predict_model_ice_mk import predict
-    predict(split="test")
-    print("Test predictions saved.")
-
-
-def task_drift_report(**context):
-    """Generate drift report."""
-    import sys
-    sys.path.insert(0, "/opt/airflow/app")
-
-    from src.monitoring.drift import run_drift
-    run_drift()
-    print("Drift report generated.")
+    client.set_registered_model_alias(name=model_name, alias="champion", version=best.version)
+    print(f"Champion set: v{best.version} (F1={best_f1:.4f})")
 
 
 with DAG(
     dag_id="rakuten_incremental_training",
     default_args=default_args,
-    description="8 sequential ICE training runs, then champion promotion",
+    description="8 GPU training runs with increasing data, then champion promotion",
     schedule_interval=None,
     start_date=datetime(2026, 4, 1),
     catchup=False,
-    tags=["rakuten", "mlops", "training"],
+    tags=["rakuten", "mlops", "training", "gpu"],
     max_active_tasks=1,
 ) as dag:
 
@@ -165,16 +128,16 @@ with DAG(
         python_callable=task_check_prerequisites,
     )
 
+    # 8 GPU training runs via BashOperator → docker compose
     train_tasks = []
     for cfg in RUN_CONFIGS:
-        t = PythonOperator(
+        t = BashOperator(
             task_id=f"train_run_{cfg['run_index']}",
-            python_callable=task_train_run,
-            op_kwargs={
-                "run_index": cfg["run_index"],
-                "data_fraction": cfg["data_fraction"],
-                "epochs": cfg["epochs"],
-            },
+            bash_command=DOCKER_TRAIN_CMD.format(
+                fraction=cfg["data_fraction"],
+                epochs=cfg["epochs"],
+            ),
+            cwd="/opt/airflow/app",  # project root where docker-compose.yml lives
         )
         train_tasks.append(t)
 
@@ -186,15 +149,5 @@ with DAG(
         python_callable=task_compare_and_promote,
     )
 
-    predict_test = PythonOperator(
-        task_id="predict_test",
-        python_callable=task_predict_test,
-    )
-
-    drift = PythonOperator(
-        task_id="drift_report",
-        python_callable=task_drift_report,
-    )
-
     check >> train_tasks[0]
-    train_tasks[-1] >> compare >> predict_test >> drift
+    train_tasks[-1] >> compare

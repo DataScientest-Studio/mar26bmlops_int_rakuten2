@@ -726,7 +726,7 @@ def train(config=None):
         minio_image_prefix=minio_prefix,
     )
 
-    num_workers = 0
+    num_workers = 4
     train_dl = DataLoader(
         train_ds,
         batch_size=cfg["batch_size"],
