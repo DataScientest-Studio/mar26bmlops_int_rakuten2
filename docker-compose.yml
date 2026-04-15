@@ -103,6 +103,12 @@ services:
       - ./models:/app/models
       - ./db:/app/db
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # -- GPU training container (mk) --
   # Usage: docker compose --profile training run --rm training
@@ -144,6 +150,22 @@ services:
     ports:
       - "5050:8080"
     restart: unless-stopped
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rakuten_streamlit
+    volumes:
+      - .:/app
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+    command: streamlit run app.py --server.address 0.0.0.0
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
