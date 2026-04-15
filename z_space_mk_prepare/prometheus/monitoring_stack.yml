@@ -1,0 +1,85 @@
+# prometheus.yml
+# Scrape config for Rakuten MLOps stack
+# Place in project root: /home/mirco/rakuten2/prometheus.yml
+
+global:
+  scrape_interval:     15s   # how often to scrape targets
+  evaluation_interval: 15s   # how often to evaluate rules
+
+scrape_configs:
+
+  # FastAPI app — exposes /metrics via prometheus_client
+  - job_name: "rakuten_api"
+    static_configs:
+      - targets: ["rakuten_api:8000"]
+    metrics_path: /metrics
+
+  # MLflow — basic health (no native Prometheus support, use blackbox if needed)
+  # - job_name: "mlflow"
+  #   static_configs:
+  #     - targets: ["mlflow:5000"]
+
+  # Prometheus itself
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+---
+# docker-compose.monitoring.yml
+# Add Prometheus + Grafana to the stack
+#
+# Usage:
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.monitoring.yml \
+#                  [-f docker-compose.airflow.yml] up -d
+#
+# Access:
+#   Prometheus: http://localhost:9090
+#   Grafana:    http://localhost:3000  (admin / admin)
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: rakuten_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"   # allow reload via POST /-/reload
+    ports:
+      - "9090:9090"
+    networks:
+      - rakuten2_default
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: rakuten_grafana
+    environment:
+      GF_SECURITY_ADMIN_USER:     admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+      # Auto-provision Prometheus datasource
+      GF_DATASOURCES_DEFAULT_DATASOURCE_URL: http://prometheus:9090
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - rakuten2_default
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  rakuten2_default:
+    external: true

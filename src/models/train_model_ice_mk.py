@@ -627,7 +627,7 @@ def generate_predictions(
         minio_image_prefix=minio_image_prefix,
     )
 
-    num_workers = min(4, os.cpu_count() or 1)
+    num_workers = min(8, os.cpu_count() or 1)
     infer_loader = DataLoader(
         infer_ds,
         batch_size=batch_size,

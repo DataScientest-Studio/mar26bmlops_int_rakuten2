@@ -130,9 +130,13 @@ print(get_db_summary())
 "
 
 # 8 Runs mit steigenden Datenmengen
+
+docker compose up postgres
+set -a; source .env; source .env.local; set +a
+
 python -m src.models.compare_and_promote \
   --fractions 0.524 0.576 0.629 0.681 0.733 0.786 0.838 0.890 \
-  --epochs 3 \
+  --epochs 1 \
   --eval-split val
 ```
 
@@ -215,6 +219,9 @@ chmod -R 755 airflow/dags/
 
 # Airflow Docker-Socket
 docker exec -u root rakuten_airflow_scheduler chmod 666 /var/run/docker.sock
+
+sudo chown -R mirco:mirco .
+
 ```
 
 ---
@@ -245,10 +252,18 @@ df_x    = pd.read_csv(DATA_DIR / 'raw' / 'X_train.csv')
 df_y    = pd.read_csv(DATA_DIR / 'raw' / 'y_train.csv')
 df_test = pd.read_csv(DATA_DIR / 'raw' / 'X_test.csv')
 train_x, val_x, train_y, val_y = train_test_split(df_x, df_y, test_size=0.1, random_state=42)
-init_db(); clear_products()
+init_db(); clear_products()docker compose -f docker-compose.yml -f docker-compose.airflow.yml down
 ingest_products(train_x, train_y, split='train')
 ingest_products(val_x,   val_y,   split='val')
 ingest_products(df_test, df_y=None, split='test')
 print(get_db_summary())
 "
+
+
+
+# bashrc
+echo 'cd ~/rakuten2 && set -a && source .env && source .env.local && set +a' >> ~/.bashrc
+source ~/.bashrc
+
+
 

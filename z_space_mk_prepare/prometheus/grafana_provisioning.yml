@@ -1,0 +1,31 @@
+# grafana/provisioning/datasources/prometheus.yml
+# Auto-provisions Prometheus as default datasource in Grafana
+# Place at: /home/mirco/rakuten2/grafana/provisioning/datasources/prometheus.yml
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+
+---
+# grafana/provisioning/dashboards/dashboard.yml
+# Tells Grafana where to load dashboard JSON files from
+
+apiVersion: 1
+
+providers:
+  - name: "Rakuten MLOps"
+    orgId: 1
+    folder: "Rakuten"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
