@@ -29,6 +29,7 @@ default_args = {
 # Docker command template for GPU training
 DOCKER_TRAIN_CMD = (
     "docker run --rm --gpus all "
+    "--shm-size=4g "
     "--network rakuten2_default "
     "-v /home/mirco/rakuten2/data:/app/data "
     "-v /home/mirco/rakuten2/models:/app/models "
