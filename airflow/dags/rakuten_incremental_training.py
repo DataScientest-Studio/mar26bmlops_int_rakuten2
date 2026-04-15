@@ -30,7 +30,9 @@ default_args = {
 DOCKER_TRAIN_CMD = (
     "docker run --rm --gpus all "
     "--network rakuten2_default "
-    "-v /home/mirco/rakuten2:/app "
+    "-v /home/mirco/rakuten2/data:/app/data "
+    "-v /home/mirco/rakuten2/models:/app/models "
+    "-v /home/mirco/rakuten2/db:/app/db "
     "-w /app "
     "-e MLFLOW_TRACKING_URI=http://mlflow:5000 "
     "-e AWS_ACCESS_KEY_ID=admin "
