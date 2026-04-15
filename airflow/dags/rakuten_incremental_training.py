@@ -3,6 +3,9 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 
+#in contaienr always correct
+db_url = "postgresql://postgres:postgres@postgres:5432/rakuten"
+
 TOTAL_TRAIN = 190_908
 APP_ROOT = "/opt/airflow/app"
 
@@ -25,7 +28,18 @@ default_args = {
 
 # Docker command template for GPU training
 DOCKER_TRAIN_CMD = (
-    "docker compose --profile training run --rm training "
+    "docker run --rm --gpus all "
+    "--network rakuten2_default "
+    "-v /home/mirco/rakuten2:/app "
+    "-w /app "
+    "-e MLFLOW_TRACKING_URI=http://mlflow:5000 "
+    "-e AWS_ACCESS_KEY_ID=admin "
+    "-e AWS_SECRET_ACCESS_KEY=pwd_123_SIMV "
+    "-e MLFLOW_S3_ENDPOINT_URL=http://minio:9000 "
+    "-e DATABASE_URL=postgresql://postgres:postgres@postgres:5432/rakuten "
+    "-e DB_BACKEND=postgres "
+    "-e IMAGE_SOURCE=local "
+    "rakuten2-training "
     "python -m src.models.train_model_final "
     "--data-fraction {fraction} --epochs {epochs}"
 )
@@ -39,7 +53,7 @@ def task_check_prerequisites(**context):
 
     # Check DB via Postgres
     import psycopg2
-    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/rakuten")
+    # db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/rakuten")
     conn = psycopg2.connect(db_url)
     cur = conn.cursor()
     cur.execute("SELECT split, COUNT(*) FROM products GROUP BY split")

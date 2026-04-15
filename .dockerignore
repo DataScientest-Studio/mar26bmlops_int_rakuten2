@@ -71,3 +71,14 @@ __pycache__/
 node_modules/
 mc.exe
 airflow/logs/
+
+data/images
+data/raw
+mlflow/
+mlruns/
+venv/
+.dvc/cache
+*.pth
+*.pkl
+__pycache__
+.git
