@@ -91,45 +91,98 @@ python src/data/load_data.py
 
 - create a basic FastAPI inference service
 
-## Phase 2 Preparation
-- MLflow is set up for experiment tracking
+## # Phase 2 – MLflow Tracking, Registry & Storage
 
-- Environment variables are defined in .env
+This project uses a production-style MLflow setup with PostgreSQL and MinIO.
 
-- API entry point: src/api/main.py
+## Architecture
 
-- Raw and processed data are excluded from version control
+- **MLflow Tracking Server**: experiment logging and model registry
+- **PostgreSQL**: backend metadata store for MLflow
+- **MinIO (S3-compatible)**: artifact storage for models, datasets, and outputs
+- **Training Service**: trains and evaluates models
+- **API Service**: serves predictions using promoted models
 
-- Development is done via feature branches
+## Environment Configuration
 
-## Local setup
+Main variables:
+
 ```bash
-cp .env
-pip install -r requirements.txt
-uvicorn src.api.main:app --reload
-pytest
+MLFLOW_TRACKING_URI=http://localhost:5000
+MLFLOW_REGISTERED_MODEL_NAME=rakuten-ice-dual-encoder
+
+MLFLOW_BACKEND_STORE_URI=postgresql://postgres:postgres@postgres:5432/mlflow_meta
+
+MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+
+AWS_ACCESS_KEY_ID=admin
+AWS_SECRET_ACCESS_KEY=...
 ```
 
-## Start MLflow
+## Experiment Tracking
+
+Each training run logs:
+
+hyperparameters
+batch size
+learning rates
+max epochs
+thresholds
+validation metrics
+micro-F1 / macro-F1
+trained model artifacts
+label binarizer artifacts
+
+## Model Registry Workflow
+
+The registered model:
+- rakuten-ice-dual-encoder
+
+## Aliases used:
+
+- candidate
+- champion
+
+# Workflow:
+
+1. Train new model
+2. Log run to MLflow
+3. Register model version
+4. Set alias candidate
+5. Compare with current champion
+6. Promote better model automatically
+
+## Scripts
+
+# Training
 ```bash
-mlflow server --host 0.0.0.0 --port 5000
+python -m src.models.train_model_final
 ```
-## Phase 2 Overview
-- MLflow experiment tracking is integrated in the training service.
-- Model versioning is handled with MLflow Model Registry.
-- The best model is selected by comparing the new retrained model against the previous champion on validation micro-F1.
-- The application is decomposed into Docker microservices: mlflow, training, api.
+# Prediction
+```bash
+python -m src.models.predict_model_final
+```
 
-## How to run (Docker)
-1. docker compose up -d mlflow
-2. docker compose up -d api
-3. docker compose run --rm training python -m src.models.train_model_ice_mk
+# Compare & Promote
+```bash
+python -m src.models.compare_and_promote
+```
+# Full Pipeline
+```bash
+python -m src.pipeline --mode full
+```
 
+# Docker Usage
+```bash
+docker compose up -d
+docker compose run --rm training python -m src.pipeline --mode train
+```
 ## Services
 - MLflow UI: http://localhost:5000
+- MinIO Console: http://localhost:9001
 - API: http://localhost:8000
 
-## Model Registry
-- Registered model name: rakuten-ice-dual-encoder
-   - Candidate alias: candidate
-   - Champion alias: champion
+## Storage Strategy
+- Structured metadata → PostgreSQL
+- Models & artifacts → MinIO
+- Registry versions → MLflow Model Registry
