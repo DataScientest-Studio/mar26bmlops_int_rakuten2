@@ -289,3 +289,16 @@ docker compose --profile training run --rm training \
 docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
 # Trigger via UI (localhost:8080) oder:
 docker exec rakuten_airflow_scheduler airflow dags trigger rakuten_incremental_training
+
+
+5 api LOCAL
+docker compose up -d postgres
+set -a; source .env; source .env.local; set +a
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+    OR
+DB_BACKEND=sqlite \
+DATABASE_PATH=db/rakuten.db \
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+IMAGE_SOURCE=local \
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload

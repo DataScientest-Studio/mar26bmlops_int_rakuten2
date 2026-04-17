@@ -11,6 +11,10 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
+
+def placeholder() -> str:
+    """Return SQL placeholder for current DB backend (%s for Postgres, ? for SQLite)."""
+    return "%s" if os.getenv("DB_BACKEND", "sqlite") == "postgres" else "?"
 from pathlib import Path
 
 import pandas as pd
