@@ -16,7 +16,7 @@ for i, n_images in enumerate(range(100_000, 180_000, 10_000)):
         "run_index": i + 1,
         "n_images": n_images,
         "data_fraction": fraction,
-        "epochs": 3,
+        "epochs": 1,
     })
 
 default_args = {

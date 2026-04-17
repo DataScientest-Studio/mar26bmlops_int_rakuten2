@@ -128,16 +128,16 @@ def ingest_into_db(df_x, df_y, df_test, mission_mode=False):
     return summary
 
 
-def maybe_copy_mirco_db():
-    """Kept only for Mirco's local setup."""
-    if os.getenv("USER") == "mirco":
-        import shutil
+# def maybe_copy_mirco_db():
+#     """Kept only for Mirco's local setup."""
+#     if os.getenv("USER") == "mirco":
+#         import shutil
 
-        shutil.copy(
-            "/home/mirco/rakuten2/db/rakuten_colors.db",
-            "/mnt/c/02_Project_MLOPS/rakuten_colors.db",
-        )
-        print("DB Copy to local for Mirco only")
+#         shutil.copy(
+#             "/home/mirco/rakuten2/db/rakuten_colors.db",
+#             "/mnt/c/02_Project_MLOPS/rakuten_colors.db",
+#         )
+#         print("DB Copy to local for Mirco only")
 
 
 def run_pipeline(
@@ -167,7 +167,6 @@ def run_pipeline(
     df_x, df_y, df_test = load_all_data_from_minio()
     db_summary = ingest_into_db(df_x, df_y, df_test, mission_mode=mission_mode)
 
-    maybe_copy_mirco_db()
 
     if mode == "ingest":
         print("\nDone (ingest only).")

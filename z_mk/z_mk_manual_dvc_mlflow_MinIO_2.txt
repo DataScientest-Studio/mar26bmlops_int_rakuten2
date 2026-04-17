@@ -266,4 +266,26 @@ echo 'cd ~/rakuten2 && set -a && source .env && source .env.local && set +a' >> 
 source ~/.bashrc
 
 
+## variants
 
+1 local
+set -a && source .env && source .env.local && set +a
+source start_local_dev.sh --no-mlflow
+python -m src.models.train_model_final --epochs 3
+
+2
+source start_local_dev.sh
+python -m src.models.compare_and_promote \
+  --fractions 0.524 0.576 0.629 0.681 0.733 0.786 0.838 0.890 \
+  --epochs 3 --eval-split val
+
+3
+docker compose up -d minio minio-init postgres mlflow
+docker compose --profile training run --rm training \
+  python -m src.models.train_model_final --epochs 3
+
+
+4
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
+# Trigger via UI (localhost:8080) oder:
+docker exec rakuten_airflow_scheduler airflow dags trigger rakuten_incremental_training

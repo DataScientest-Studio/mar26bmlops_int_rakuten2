@@ -1,0 +1,10 @@
+# Einmalig auf dem Host ausführen (außerhalb Docker)
+python -c "
+from transformers import AutoTokenizer, CLIPImageProcessor
+AutoTokenizer.from_pretrained('cl-tohoku/bert-base-japanese-v3',
+    cache_dir='./hf_cache')
+CLIPImageProcessor.from_pretrained('openai/clip-vit-base-patch16',
+    cache_dir='./hf_cache')
+print('Done.')
+"
+

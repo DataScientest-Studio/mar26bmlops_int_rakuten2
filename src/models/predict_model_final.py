@@ -346,13 +346,17 @@ def predict(
         minio_image_prefix=minio_prefix,
     )
 
+    num_workers = 4 if device == "cuda" else 0
+    prefetch = 2 if device == "cuda" else None
+
     infer_loader = DataLoader(
         infer_ds,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0,
+        num_workers=num_workers,
         pin_memory=(device == "cuda"),
-        persistent_workers=False,
+        prefetch_factor=prefetch,
+        persistent_workers=(num_workers > 0),
     )
 
     # --------------------------------------------------------

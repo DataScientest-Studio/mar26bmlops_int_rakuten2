@@ -21,17 +21,17 @@ stages:
       size: 3281
     - path: src/db.py
       hash: md5
-      md5: bffbc57263ea09d97c5e7216b3411716
-      size: 6563
+      md5: 3e5572deaee5bbb0cda7d8b1279c5282
+      size: 9627
     - path: src/pipeline.py
       hash: md5
-      md5: a9a0a1e7ee962b62caee875d5e275e2a
-      size: 5890
+      md5: d6435896f811551923f5b9e73d899e1d
+      size: 11269
     outs:
     - path: db/rakuten.db
       hash: md5
-      md5: 59bcf953a88ae4a61387ccf9dee4139f
-      size: 529719296
+      md5: 38d07902e29717e8155977e712607446
+      size: 2220032
   train:
     cmd: python -m src.models.train_model_final
     deps:

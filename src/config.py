@@ -104,7 +104,7 @@ NUM_LABELS = len(COLOR_LABELS)
 ICE_CONFIG = {
     "text_model_id": os.getenv("TEXT_MODEL_ID", "cl-tohoku/bert-base-japanese-v3"),
     "vision_model_id": os.getenv("VISION_MODEL_ID", "openai/clip-vit-base-patch16"),
-    "batch_size": int(os.getenv("ICE_BATCH_SIZE", "128")),
+    "batch_size": int(os.getenv("ICE_BATCH_SIZE", "256")),
     "learning_rate": float(os.getenv("ICE_LR", "0.003")),
     "encoder_lr": float(os.getenv("ICE_ENCODER_LR", "2e-5")),
     "max_epochs": int(os.getenv("ICE_MAX_EPOCHS", "1")),

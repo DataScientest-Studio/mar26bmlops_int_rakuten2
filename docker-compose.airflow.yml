@@ -1,19 +1,4 @@
 # docker-compose.airflow.yml
-# Airflow extension — run alongside the base docker-compose.yml
-#
-# Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
-#
-# First time setup:
-#   docker compose -f docker-compose.yml -f docker-compose.airflow.yml \
-#     run --rm airflow-init
-#
-# Access Airflow UI: http://localhost:8080 (admin / admin)
-#
-# NOTE: PYTHONPATH is NOT set to /opt/airflow/app because the project
-# contains a mlflow/ folder that shadows the real mlflow package.
-# Task functions add /opt/airflow/app to sys.path explicitly when needed.
-
 services:
   airflow-init:
     image: apache/airflow:2.10.4-python3.11
@@ -43,9 +28,13 @@ services:
         echo "Airflow init done."
     restart: "no"
 
-  airflow-webserver:
-    image: apache/airflow:2.10.4-python3.11
-    container_name: rakuten_airflow_web
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: rakuten_airflow_scheduler
+    group_add:
+      - "${DOCKER_GID}"
     env_file:
       - .env
     environment:
@@ -54,16 +43,37 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://postgres:postgres@postgres:5432/airflow
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      # NO PYTHONPATH here — mlflow/ folder in project root shadows the real package
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
-      _PIP_ADDITIONAL_REQUIREMENTS: >-
-        mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
-        numpy==1.26.4 pillow tqdm pyyaml python-dotenv docker
-        torch --extra-index-url https://download.pytorch.org/whl/cpu
-        transformers fugashi unidic-lite
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./airflow/dags:/opt/airflow/dags
+      - .:/opt/airflow/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    command: airflow scheduler
+    restart: unless-stopped
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: rakuten_airflow_web
+    environment:
+      AIRFLOW__WEBSERVER__SECRET_KEY: "rakuten-mlops-2026"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://postgres:postgres@postgres:5432/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
     ports:
       - "8080:8080"
     volumes:
@@ -74,38 +84,7 @@ services:
         condition: service_healthy
       mlflow:
         condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
     command: airflow webserver --port 8080
     restart: unless-stopped
-
-  airflow-scheduler:
-    image: apache/airflow:2.10.4-python3.11
-    container_name: rakuten_airflow_scheduler
-    env_file:
-      - .env
-    environment:
-      AIRFLOW__WEBSERVER__SECRET_KEY: "rakuten-mlops-2026"
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://postgres:postgres@postgres:5432/airflow
-      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      # NO PYTHONPATH here — see note above
-      MLFLOW_TRACKING_URI: http://mlflow:5000
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
-      _PIP_ADDITIONAL_REQUIREMENTS: >-
-        mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
-        numpy==1.26.4 pillow tqdm pyyaml python-dotenv docker
-        torch --extra-index-url https://download.pytorch.org/whl/cpu
-        transformers fugashi unidic-lite
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./airflow/dags:/opt/airflow/dags
-      - .:/opt/airflow/app
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: airflow scheduler
-    restart: unless-stopped
-
-    # docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d --force-recreate airflow-webserver airflow-scheduler
