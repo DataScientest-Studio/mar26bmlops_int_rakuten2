@@ -3,6 +3,7 @@ import requests
 import os
 from PIL import Image
 import io
+import pandas as pd
 
 # CONFIGURATION
 API_URL = os.getenv("API_URL", "http://api:8000")
@@ -257,91 +258,165 @@ device: cpu"""
 # ======================================================
 # TAB 6 — LIVE DEMO
 # ======================================================
-with tab1:
+with tab6:
     st.title("🛍️ Rakuten Color Predictor")
-    st.markdown("""Upload a product image and provide a title and description. 
-The model will predict the primary color using the Dual-Encoder weights.""")
+    
+    # Dropdown to switch prediction modes
+    demo_mode = st.selectbox(
+        "Select Prediction Mode",
+        ["Single Product Upload", "Bulk Batch Processing (Excel + Images)"]
+    )
 
     st.divider()
 
-    # LAYOUT
-    col1, col2 = st.columns([1, 1])
+    # --- MODE 1: SINGLE UPLOAD ---
+    if demo_mode == "Single Product Upload":
+        st.subheader("Single Item Prediction")
+        st.markdown("Upload a product image and provide a title and description.")
 
-    with col1:
-        st.subheader("Input Data")
-        product_name = st.text_area(
-            "Product Name",
-            placeholder="e.g., Blue Denim Jacket"
-        )
-        product_description = st.text_area(
-            "Product Description",
-            placeholder="e.g., Classic light-wash blue jean jacket with silver buttons and chest pockets."
-        )
-        uploaded_file = st.file_uploader("Product Image", type=["jpg", "jpeg", "png"])
+        col1, col2 = st.columns([1, 1])
 
-    with col2:
-        st.subheader("Preview & Prediction")
-        if uploaded_file:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_container_width=True)
-        else:
-            st.info("Upload an image to see the preview.")
+        with col1:
+            st.subheader("Input Data")
+            item_name = st.text_area("Product Name", placeholder="e.g., Blue Denim Jacket")
+            item_caption = st.text_area(
+                "Product Description", 
+                placeholder="e.g., Classic light-wash blue jean jacket with silver buttons."
+            )
+            uploaded_file = st.file_uploader("Product Image", type=["jpg", "jpeg", "png"], key="single_upload")
 
-    st.divider()
+        with col2:
+            st.subheader("Preview")
+            if uploaded_file:
+                image = Image.open(uploaded_file)
+                st.image(image, caption="Uploaded Image", use_container_width=True)
+            else:
+                st.info("Upload an image to see the preview.")
 
-    # PREDICTION LOGIC
-    if st.button("Predict Color", type="primary", use_container_width=True):
-        if not uploaded_file:
-            st.error("Please upload an image first!")
-        elif not product_description or product_description.strip() == "":
-            st.error("Please enter a product description!")
-        else:
-            # Prepare binary data for the image
-            img_bytes = uploaded_file.getvalue()
+        if st.button("Predict Color", type="primary", use_container_width=True):
+            if not uploaded_file or not item_caption:
+                st.error("Please provide both a description and an image.")
+            else:
+                img_bytes = uploaded_file.getvalue()
+                files = {"image": (uploaded_file.name, img_bytes, uploaded_file.type)}
+                params = {"item_name": item_name, "item_caption": item_caption}
 
-            # Match the API argument name: 'image'
-            files = {"image": (uploaded_file.name, img_bytes, uploaded_file.type)}
+                with st.spinner("Analyzing image and text features..."):
+                    try:
+                        response = requests.post(PREDICT_ENDPOINT, params=params, files=files, timeout=30)
+                        if response.status_code == 200:
+                            prediction = response.json()
+                            
+                            st.divider()
+                            st.subheader("Prediction Result")
+                            
+                            res_col_img, res_col_details = st.columns([1, 2])
+                            
+                            with res_col_img:
+                                st.image(img_bytes, use_container_width=True)
+                                
+                            with res_col_details:
+                                st.markdown(f"**Item:** {item_name}")
+                                
+                                predicted = prediction.get("predicted_colors", [])
+                                all_scores = prediction.get("all_scores", [])
 
-            # Match the API query parameters: 'item_name' and 'item_caption'
-            params = {
-                "item_name": product_name,  # Short version for name
-                "item_caption": product_description  # Full version for caption
-            }
-
-            with st.spinner("Analyzing image and text features..."):
-                try:
-                    response = requests.post(
-                        PREDICT_ENDPOINT,
-                        params=params,
-                        files=files,
-                        timeout=30
-                    )
-
-                    if response.status_code == 200:
-                        prediction = response.json()
-
-                        # Your API returns 'predicted_colors' (a list)
-                        colors = prediction.get("predicted_colors", [])
-                        all_scores = prediction.get("all_scores", [])
-
-                        if colors:
-                            st.success(f"### Predicted Color: **{', '.join(colors)}**")
-
-                            # Show the top confidence score if available in all_scores
-                            if all_scores:
-                                top_score = all_scores[0].get("score", 0)
-                                st.metric("Confidence Score", f"{top_score:.2%}")
-
+                                if predicted:
+                                    st.markdown("**Detected Colors & Confidence:**")
+                                    for score_data in all_scores:
+                                        if score_data['color'] in predicted:
+                                            conf = score_data['score']
+                                            st.write(f"🏷️ **{score_data['color']}**")
+                                            st.progress(conf, text=f"{conf:.2%} confidence")
+                                else:
+                                    st.warning("No colors met the confidence threshold.")
                         else:
-                            st.warning("Model processed the request but returned no specific colors.")
+                            st.error(f"API Error: {response.status_code}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
-                    elif response.status_code == 422:
-                        st.error("Validation Error (422): The API expected different fields. Check /docs.")
-                        st.json(response.json())
+    # --- MODE 2: BATCH UPLOAD ---
+    else:
+        st.subheader("Bulk Batch Processing")
+        st.markdown("Upload an Excel/CSV and corresponding images to process multiple items.")
+
+        # Upload Metadata
+        metadata_file = st.file_uploader("1. Upload Metadata (Excel/CSV)", type=["xlsx", "csv"])
+        
+        # Upload Images
+        uploaded_images = st.file_uploader(
+            "2. Upload All Images", 
+            type=["jpg", "jpeg", "png"], 
+            accept_multiple_files=True
+        )
+
+        if st.button("Run Batch Prediction", type="primary", use_container_width=True):
+            if not metadata_file or not uploaded_images:
+                st.error("Please upload both the metadata file and the image set.")
+            else:
+                try:
+                    if metadata_file.name.endswith('csv'):
+                        df = pd.read_csv(metadata_file)
                     else:
-                        st.error(f"API Error ({response.status_code}): {response.text}")
+                        df = pd.read_excel(metadata_file)
+                    
+                    # Consistent filename matching logic
+                    image_map = {img.name: img for img in uploaded_images}
+                    
+                    payload_files = []
+                    item_names = []
+                    item_captions = []
 
-                except requests.exceptions.ConnectionError:
-                    st.error(f"Could not connect to the API at {API_URL}. Ensure the Docker container is running.")
+                    for _, row in df.iterrows():
+                        fname = str(row.get('image_file_name', '')).strip()
+                        if fname in image_map:
+                            item_names.append(row.get('item_name', ''))
+                            item_captions.append(row.get('item_caption', ''))
+                            img_obj = image_map[fname]
+                            payload_files.append(
+                                ("images", (img_obj.name, img_obj.getvalue(), img_obj.type))
+                            )
+
+                    if not payload_files:
+                        st.error("No matching images found. Check that filenames in Excel match your uploaded files.")
+                    else:
+                        with st.spinner(f"Processing batch of {len(payload_files)} items..."):
+                            BATCH_UPLOAD_ENDPOINT = f"{API_URL}/predict/batch/upload"
+                            
+                            response = requests.post(
+                                BATCH_UPLOAD_ENDPOINT, 
+                                data={
+                                    "item_names": item_names, 
+                                    "item_captions": item_captions
+                                }, 
+                                files=payload_files, 
+                                timeout=120
+                            )
+
+                            if response.status_code == 200:
+                                results = response.json().get("predictions", [])
+                                st.success("Batch Processing Complete!")
+                                
+                                for i, res in enumerate(results):
+                                    with st.container():
+                                        col_img, col_details = st.columns([1, 2])
+                                        with col_img:
+                                            st.image(payload_files[i][1][1], use_container_width=True)
+                                        with col_details:
+                                            st.markdown(f"**Item:** {item_names[i]}")
+                                            predicted = res.get("predicted_colors", [])
+                                            all_scores = res.get("all_scores", [])
+                                            if predicted:
+                                                st.markdown("**Detected Colors & Confidence:**")
+                                                for score_data in all_scores:
+                                                    if score_data['color'] in predicted:
+                                                        conf = score_data['score']
+                                                        st.write(f"**{score_data['color']}**")
+                                                        st.progress(conf, text=f"{conf:.2%} confidence")
+                                            else:
+                                                st.warning("No colors met the threshold.")
+                                        st.divider()
+                            else:
+                                st.error(f"Batch API Error: {response.text}")
                 except Exception as e:
-                    st.error(f"An unexpected error occurred: {e}")
+                    st.error(f"Process failed: {e}")
