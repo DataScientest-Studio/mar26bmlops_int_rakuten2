@@ -1,65 +1,34 @@
-# src/monitoring/drift.py
-# Drift detection: compares training vs. val label distributions using Evidently
-
+import json
 import pandas as pd
-from pathlib import Path
-import sys
+from src.db import get_split_data
+from evidently import Report
+from evidently.presets import DataDriftPreset
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+DARK_COLORS = {"Black", "Navy", "Brown", "Grey"}
+LIGHT_COLORS = {"Purple", "Orange", "Pink", "Yellow"}
 
-from src.config import COLOR_LABELS
+df_x, df_y = get_split_data(split="val")
 
-# -- Paths (must match dvc.yaml predict / predict_train outputs) --
-TRAIN_PRED_PATH = Path("reports/y_pred_train.csv")
-VAL_PRED_PATH   = Path("reports/y_pred_val.csv")
-REPORT_PATH     = Path("reports/drift_report.html")
+df = df_x.merge(df_y, on="product_id")
+df["color_list"] = df["color_tags"].str.split(",")
 
-def load_label_counts(path: Path) -> pd.DataFrame:
-    """Load predictions and count label occurrences per color."""
-    df = pd.read_csv(path)
-    # Parse color_tags column (stored as string list)
-    rows = []
-    for _, row in df.iterrows():
-        tags = eval(row["color_tags"]) if isinstance(row["color_tags"], str) else []
-        for label in COLOR_LABELS:
-            rows.append({"color": label, "present": int(label in tags)})
-    return pd.DataFrame(rows)
+ref_df = df[df["color_list"].apply(lambda tags: bool(DARK_COLORS & set(tags)))]
+curr_df = df[df["color_list"].apply(lambda tags: bool(LIGHT_COLORS & set(tags)))]
 
-def run_drift():
-    try:
-        from evidently.report import Report
-        from evidently.metric_preset import DataDriftPreset
-    except ImportError:
-        print("Evidently not installed — skipping drift report.")
-        REPORT_PATH.write_text("<html><body>Evidently not installed.</body></html>")
-        return
+all_colors = sorted(DARK_COLORS | LIGHT_COLORS)
 
-    print("Loading predictions...")
-    if not TRAIN_PRED_PATH.exists() or not VAL_PRED_PATH.exists():
-        print("Prediction files missing — skipping drift.")
-        REPORT_PATH.write_text("<html><body>Prediction files missing.</body></html>")
-        return
+ref_encoded = pd.DataFrame(
+    [{c: int(c in tags) for c in all_colors} for tags in ref_df["color_list"]]
+)
+curr_encoded = pd.DataFrame(
+    [{c: int(c in tags) for c in all_colors} for tags in curr_df["color_list"]]
+)
 
-    # Build label frequency tables
-    train_df = load_label_counts(TRAIN_PRED_PATH)
-    val_df   = load_label_counts(VAL_PRED_PATH)
+datadrift_dataset_report = Report(metrics=[DataDriftPreset()])
 
-    # Pivot: one row per sample, one col per color
-    train_pivot = train_df.groupby(
-        train_df.index // len(COLOR_LABELS)
-    ).apply(lambda x: pd.Series(x.set_index("color")["present"]))
+snapshot = datadrift_dataset_report.run(current_data=curr_encoded, reference_data=ref_encoded)
 
-    val_pivot = val_df.groupby(
-        val_df.index // len(COLOR_LABELS)
-    ).apply(lambda x: pd.Series(x.set_index("color")["present"]))
+with open("data_drift_report.json", "w") as f:
+    json.dump(snapshot.dict(), f, indent=4)
 
-    print("Running Evidently drift report...")
-    report = Report(metrics=[DataDriftPreset()])
-    report.run(reference_data=train_pivot, current_data=val_pivot)
-
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    report.save_html(str(REPORT_PATH))
-    print(f"Drift report saved to {REPORT_PATH}")
-
-if __name__ == "__main__":
-    run_drift()
+snapshot.save_html("data_drift_report.html")
