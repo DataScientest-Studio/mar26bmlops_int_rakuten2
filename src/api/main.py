@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import Counter, make_asgi_app
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -49,6 +50,14 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+app.mount("/metrics", make_asgi_app())
+
+color_predictions_counter = Counter(
+    "rakuten_color_predictions_total",
+    "Total number of times each color was predicted",
+    ["color"],
 )
 
 
@@ -82,6 +91,8 @@ def _build_scores(result: dict) -> list[ColorScore]:
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 def predict_colors(request: PredictRequest, service: ModelService = Depends(model_dep)):
     result = service.predict(request.item_name, request.item_caption, request.image_path)
+    for color in result["predicted"]:
+        color_predictions_counter.labels(color=color).inc()
     return PredictionResponse(
         predicted_colors=result["predicted"],
         all_scores=_build_scores(result),
@@ -116,6 +127,8 @@ async def predict_with_upload(
         if image_path:
             Path(image_path).unlink(missing_ok=True)
 
+    for color in result["predicted"]:
+        color_predictions_counter.labels(color=color).inc()
     return PredictionResponse(
         predicted_colors=result["predicted"],
         all_scores=_build_scores(result),
@@ -131,6 +144,8 @@ def predict_batch(request: BatchPredictRequest, service: ModelService = Depends(
     predictions = []
     for item in request.items:
         result = service.predict(item.item_name, item.item_caption, item.image_path)
+        for color in result["predicted"]:
+            color_predictions_counter.labels(color=color).inc()
         predictions.append(PredictionResponse(
             predicted_colors=result["predicted"],
             all_scores=_build_scores(result),
