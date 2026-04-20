@@ -16,6 +16,7 @@ Start:
     uvicorn src.api.main:app --reload --port 8000
 """
 import sys
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -25,7 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import Counter, make_asgi_app
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from prometheus_client import Counter, Histogram, make_asgi_app
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -52,13 +55,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/metrics", make_asgi_app())
-
 color_predictions_counter = Counter(
     "rakuten_color_predictions_total",
     "Total number of times each color was predicted",
     ["color"],
 )
+
+requests_counter = Counter(
+    "rakuten_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status_code"],
+)
+
+requests_latency = Histogram(
+    "rakuten_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "endpoint"],
+)
+
+class PrometheusMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration = time.perf_counter() - start
+
+        endpoint = request.url.path
+        if endpoint != "/metrics":  # avoid self-scrape noise
+            requests_counter.labels(request.method, endpoint, response.status_code).inc()
+            requests_latency.labels(request.method, endpoint).observe(duration)
+
+        return response
+
+app.add_middleware(PrometheusMiddleware)
+
+app.mount("/metrics", make_asgi_app())
 
 
 def model_dep() -> ModelService:
@@ -139,7 +169,6 @@ async def predict_with_upload(
 
 @app.post("/predict/batch", response_model=BatchPredictionResponse, tags=["Prediction"])
 def predict_batch(request: BatchPredictRequest, service: ModelService = Depends(model_dep)):
-    import time
     start = time.perf_counter()
     predictions = []
     for item in request.items:
