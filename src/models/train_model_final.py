@@ -726,6 +726,14 @@ def train(config=None):
         minio_image_prefix=minio_prefix,
     )
 
+
+    # Subsample validation set for fast showcase/demo runs
+    val_fraction = float(cfg.get("val_fraction", 1.0))
+    if val_fraction < 1.0:
+        n_val = max(128, int(len(val_ds) * val_fraction))  # min 128 for stable metrics
+        val_ds = torch.utils.data.Subset(val_ds, range(n_val))
+        print(f"  [Demo] Val set subsampled to {n_val}/{len(val_valid)} samples (val_fraction={val_fraction})")
+
     num_workers = 4
     train_dl = DataLoader(
         train_ds,
@@ -1275,6 +1283,9 @@ if __name__ == "__main__":
     parser.add_argument("--data-fraction", type=float, default=None)
     parser.add_argument("--max-rows", type=int, default=None)
     parser.add_argument("--skip-champion-compare", action="store_true")
+    parser.add_argument("--val-fraction", type=float, default=1.0,
+                    help="Fraction of validation set to use (for demo/showcase mode)")
+
 
     args = parser.parse_args()
 
@@ -1303,5 +1314,8 @@ if __name__ == "__main__":
         overrides["max_rows"] = args.max_rows
     if args.skip_champion_compare:
         overrides["skip_champion_compare"] = True
+    if args.val_fraction is not None and args.val_fraction < 1.0:
+        overrides["val_fraction"] = args.val_fraction
+    # Remove the broken cfg.get(...) block entirely — it doesn't belong here
 
     train(config=overrides)

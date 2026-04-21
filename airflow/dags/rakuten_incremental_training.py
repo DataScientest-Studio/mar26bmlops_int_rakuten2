@@ -3,6 +3,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 
+
 #in contaienr always correct
 db_url = "postgresql://postgres:postgres@postgres:5432/rakuten"
 
@@ -10,8 +11,8 @@ TOTAL_TRAIN = 190_908
 APP_ROOT = "/opt/airflow/app"
 
 RUN_CONFIGS = []
-for i, n_images in enumerate(range(100_000, 180_000, 10_000)):
-    fraction = round(n_images / TOTAL_TRAIN, 3)
+for i, n_images in enumerate(range(50, 400, 50)):
+    fraction = round(n_images / TOTAL_TRAIN, 6)
     RUN_CONFIGS.append({
         "run_index": i + 1,
         "n_images": n_images,
@@ -34,7 +35,11 @@ DOCKER_TRAIN_CMD = (
     "-v /home/mirco/rakuten2/data:/app/data "
     "-v /home/mirco/rakuten2/models:/app/models "
     "-v /home/mirco/rakuten2/db:/app/db "
+    # Use host cache directly — no need to populate a named volume
+    "-v /home/mirco/.cache/huggingface:/root/.cache/huggingface "
     "-w /app "
+    "-e TRANSFORMERS_OFFLINE=1 "
+    "-e HF_DATASETS_OFFLINE=1 "
     "-e MLFLOW_TRACKING_URI=http://mlflow:5000 "
     "-e AWS_ACCESS_KEY_ID=admin "
     "-e AWS_SECRET_ACCESS_KEY=pwd_123_SIMV "
@@ -44,7 +49,11 @@ DOCKER_TRAIN_CMD = (
     "-e IMAGE_SOURCE=local "
     "rakuten2-training "
     "python -m src.models.train_model_final "
-    "--data-fraction {fraction} --epochs {epochs}"
+    "--data-fraction {fraction} --epochs {epochs} "
+    "--val-fraction 0.05 "
+    "--skip-champion-compare"
+    # 0.05 × 21212 = ~1060 val images — still representative, much faster
+
 )
 
 
@@ -151,3 +160,7 @@ with DAG(
 
     check >> train_tasks[0]
     train_tasks[-1] >> compare
+
+
+
+
