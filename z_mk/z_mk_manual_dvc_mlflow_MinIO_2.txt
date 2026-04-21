@@ -206,6 +206,38 @@ dvc push -r minio data/images.dvc
 
 ---
 
+
+
+
+
+## postgres
+
+DATA einlesen in den Container
+
+DB_BACKEND=postgres \
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rakuten \
+python -c "
+import pandas as pd
+from src.config import DATA_DIR
+from src.db import init_db, ingest_products, clear_products, get_db_summary
+from sklearn.model_selection import train_test_split
+
+df_x    = pd.read_csv(DATA_DIR / 'raw' / 'X_train.csv')
+df_y    = pd.read_csv(DATA_DIR / 'raw' / 'y_train.csv')
+df_test = pd.read_csv(DATA_DIR / 'raw' / 'X_test.csv')
+
+train_x, val_x, train_y, val_y = train_test_split(df_x, df_y, test_size=0.1, random_state=42)
+
+init_db()
+ingest_products(train_x, train_y, split='train')
+ingest_products(val_x,   val_y,   split='val')
+ingest_products(df_test, df_y=None, split='test')
+print(get_db_summary())
+"
+
+
+
+
 ## Berechtigungen (nach Problemen)
 
 ```bash
