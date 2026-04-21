@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+
 from src.api.schemas import (
     PredictRequest, BatchPredictRequest,
     PredictionResponse, BatchPredictionResponse,
@@ -19,6 +20,12 @@ from src.api.schemas import (
 )
 from src.api.model_service import get_model_service, ModelService
 from src.config import COLOR_LABELS
+
+# Grafana
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from prometheus_client import Counter, Histogram, make_asgi_app
 
 app = FastAPI(
     title="Rakuten Color Extraction API",
@@ -30,9 +37,51 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"])
+
+color_predictions_counter = Counter(
+"rakuten_color_predictions_total",
+"Total number of times each color was predicted",
+["color"],
 )
 
+requests_counter = Counter(
+    "rakuten_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status_code"],
+)
+
+requests_latency = Histogram(
+    "rakuten_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "endpoint"],
+)
+
+
+class PrometheusMiddleware(BaseHTTPMiddleware):
+    """Instrument every request with counter + latency histogram."""
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration = time.perf_counter() - start
+
+        endpoint = request.url.path
+        # Skip /metrics itself to avoid self-scrape noise
+        if endpoint != "/metrics":
+            requests_counter.labels(request.method, endpoint, response.status_code).inc()
+            requests_latency.labels(request.method, endpoint).observe(duration)
+
+        return response
+
+
+app.add_middleware(PrometheusMiddleware)
+
+# Expose /metrics endpoint for Prometheus scraping
+app.mount("/metrics", make_asgi_app())
+
+
+
+# END MIDDLEWARE
 
 def model_dep() -> ModelService:
     return get_model_service()
@@ -64,6 +113,10 @@ def _build_scores(result: dict) -> list[ColorScore]:
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 def predict_colors(request: PredictRequest, service: ModelService = Depends(model_dep)):
     result = service.predict(request.item_name, request.item_caption, request.image_path)
+    # Increment per-color counter for Prometheus
+    for color in result["predicted"]:
+        color_predictions_counter.labels(color=color).inc()
+
     return PredictionResponse(
         predicted_colors=result["predicted"],
         all_scores=_build_scores(result),
@@ -91,6 +144,9 @@ async def predict_with_upload(
     finally:
         if image_path:
             Path(image_path).unlink(missing_ok=True)
+    # Increment per-color counter for Prometheus
+    for color in result["predicted"]:
+        color_predictions_counter.labels(color=color).inc()
     return PredictionResponse(
         predicted_colors=result["predicted"],
         all_scores=_build_scores(result),
@@ -106,6 +162,9 @@ def predict_batch(request: BatchPredictRequest, service: ModelService = Depends(
     predictions = []
     for item in request.items:
         result = service.predict(item.item_name, item.item_caption, item.image_path)
+        # Increment per-color counter for Prometheus
+        for color in result["predicted"]:
+            color_predictions_counter.labels(color=color).inc()
         predictions.append(PredictionResponse(
             predicted_colors=result["predicted"],
             all_scores=_build_scores(result),
@@ -113,6 +172,7 @@ def predict_batch(request: BatchPredictRequest, service: ModelService = Depends(
             inference_ms=result["inference_ms"],
         ))
     total_ms = (time.perf_counter() - start) * 1000
+
     return BatchPredictionResponse(
         predictions=predictions,
         total_items=len(predictions),
