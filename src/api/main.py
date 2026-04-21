@@ -17,6 +17,8 @@ Start:
 """
 import sys
 import time
+import tempfile
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -24,7 +26,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -181,6 +183,49 @@ def predict_batch(request: BatchPredictRequest, service: ModelService = Depends(
             model_type=result["model_type"],
             inference_ms=result["inference_ms"],
         ))
+    total_ms = (time.perf_counter() - start) * 1000
+    return BatchPredictionResponse(
+        predictions=predictions,
+        total_items=len(predictions),
+        total_inference_ms=round(total_ms, 2),
+    )
+
+
+@app.post("/predict/batch/upload", response_model=BatchPredictionResponse, tags=["Prediction"])
+async def predict_batch_with_upload(
+    item_names: list[str] = Form(...),
+    item_captions: list[str] = Form(...),
+    images: list[UploadFile] = File(...),
+    service: ModelService = Depends(model_dep),
+):
+    if not (len(item_names) == len(item_captions) == len(images)):
+        raise HTTPException(400, "Lists of names, captions, and images must match in length.")
+
+    start = time.perf_counter()
+    predictions = []
+    temp_paths = []
+
+    try:
+        for img in images:
+            suffix = Path(img.filename).suffix or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(img.file, tmp)
+                temp_paths.append(tmp.name)
+
+        for i in range(len(temp_paths)):
+            result = service.predict(item_names[i], item_captions[i], temp_paths[i])
+            for color in result["predicted"]:
+                color_predictions_counter.labels(color=color).inc()
+            predictions.append(PredictionResponse(
+                predicted_colors=result["predicted"],
+                all_scores=_build_scores(result),
+                model_type=result["model_type"],
+                inference_ms=result["inference_ms"],
+            ))
+    finally:
+        for path in temp_paths:
+            Path(path).unlink(missing_ok=True)
+
     total_ms = (time.perf_counter() - start) * 1000
     return BatchPredictionResponse(
         predictions=predictions,
