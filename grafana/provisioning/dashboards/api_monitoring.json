@@ -3,7 +3,7 @@
   "uid": "rakuten-api",
   "schemaVersion": 38,
   "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
+  "time": { "from": "now-1d", "to": "now" },
   "panels": [
     {
       "id": 1,
@@ -53,12 +53,12 @@
     },
     {
       "id": 1001,
-      "title": "Color Predictions (last 5m)",
+      "title": "Color Predictions (last 1d)",
       "type": "bargauge",
-      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 10 },
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 14 },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
-        "orientation": "horizontal",
+        "orientation": "vertical",
         "displayMode": "gradient",
         "showUnfilled": true,
         "valueMode": "color"
@@ -77,14 +77,14 @@
         }
       },
       "targets": [
-        { "datasource": "Prometheus", "expr": "round(sum by (color) (increase(rakuten_color_predictions_total[5m])))", "legendFormat": "{{color}}", "range": true }
+        { "datasource": "Prometheus", "expr": "round(sum by (color) (increase(rakuten_color_predictions_total[1d])))", "legendFormat": "{{color}}", "range": true }
       ]
     },
     {
       "id": 2,
       "title": "Request Latency",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 10 },
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom" },
         "tooltip": { "mode": "multi", "sort": "desc" }
@@ -106,7 +106,7 @@
       "id": 3,
       "title": "Request Rate by Endpoint",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom" },
         "tooltip": { "mode": "multi" }
