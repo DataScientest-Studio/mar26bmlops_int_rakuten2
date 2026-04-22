@@ -11,6 +11,7 @@ API_URL = os.getenv("API_URL", "http://api:8000")
 PREDICT_ENDPOINT = f"{API_URL}/predict/upload"
 MODEL_INFO_ENDPOINT = f"{API_URL}/model/info"
 HEALTH_ENDPOINT = f"{API_URL}/health"
+RELOAD_ENDPOINT = f"{API_URL}/admin/reload"
 
 BASE_DIR = Path(__file__).resolve().parent
 ASSET_DIR = BASE_DIR / "mlflow" / "assets"
@@ -669,7 +670,7 @@ with tab5:
         "Proof that backend service and model source are operational."
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         if st.button("Check API Health", use_container_width=True):
@@ -713,6 +714,23 @@ with tab5:
                     st.error(f"Model endpoint returned status code {r.status_code}.")
             except Exception:
                 warn("<b>Model endpoint unreachable.</b> The model-serving API is not reachable from the current session.")
+
+    with col3:
+        if st.button("Reload Champion", use_container_width=True, type="secondary"):
+            try:
+                response = requests.post(f"{API_URL}/admin/reload", timeout=60)
+                if response.status_code == 200:
+                    data = response.json()
+                    st.success(
+                        f"Reloaded ✓ — source: **{data.get('model_source')}**, "
+                        f"mock: **{data.get('is_mock')}**"
+                    )
+                    st.json(data)
+                else:
+                    st.error(f"Reload returned {response.status_code}")
+                    st.text(response.text)
+            except Exception as e:
+                st.error(f"Reload failed: {e}")
 
     st.divider()
 

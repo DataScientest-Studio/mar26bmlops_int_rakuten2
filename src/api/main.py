@@ -2,11 +2,13 @@
 Rakuten Color Extraction API.
 """
 import sys
+import tempfile
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Query, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -18,20 +20,37 @@ from src.api.schemas import (
     ColorScore, ProductResponse, LabelDistribution,
     DBSummaryResponse, HealthResponse, ModelInfoResponse,
 )
-from src.api.model_service import get_model_service, ModelService
+from src.api.model_service import get_model_service, reload_model_service, ModelService
 from src.config import COLOR_LABELS
 
 # Grafana
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from prometheus_client import Counter, Histogram, make_asgi_app
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from fastapi import Response
+
+
+from src.api.model_service import (
+    get_model_service,
+    reload_model_service,   # NEW
+    ModelService,
+)
+from src.monitoring.metrics import (
+    update_drift_metrics,
+    update_model_metrics_from_mlflow,
+)
+
+
 
 app = FastAPI(
     title="Rakuten Color Extraction API",
     description="Color classification from product text and images.",
     version="0.2.0",
 )
+
+
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,24 +83,64 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
         response = await call_next(request)
         duration = time.perf_counter() - start
-
+ 
         endpoint = request.url.path
         # Skip /metrics itself to avoid self-scrape noise
         if endpoint != "/metrics":
-            requests_counter.labels(request.method, endpoint, response.status_code).inc()
+            requests_counter.labels(
+                request.method, endpoint, response.status_code,
+            ).inc()
             requests_latency.labels(request.method, endpoint).observe(duration)
-
+ 
         return response
 
 
 app.add_middleware(PrometheusMiddleware)
 
-# Expose /metrics endpoint for Prometheus scraping
-app.mount("/metrics", make_asgi_app())
-
+# -- Prometheus scrape endpoint (custom so we can refresh drift on scrape)
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics():
+    """Prometheus scrape endpoint. Refreshes drift gauges on each scrape.
+ 
+    Wrapped in try/except so a malformed drift file or any other transient
+    issue can never take the scrape endpoint down.
+    """
+    try:
+        update_drift_metrics()
+    except Exception as e:
+        print(f"[metrics] drift refresh failed (non-fatal): {e}")
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # END MIDDLEWARE
+
+# =========================================================================
+# Lifecycle
+# =========================================================================
+
+
+@app.on_event("startup")
+async def on_startup():
+    """Single startup hook: print banner + prime model gauges from MLflow."""
+    print("\n" + "=" * 50)
+    print("  Rakuten Color Extraction API")
+    print("=" * 50)
+    svc = get_model_service()
+    print(f"  Model: {svc.model_type} | Device: {svc.device} | Mock: {svc.is_mock}")
+    print("=" * 50 + "\n")
+ 
+    # Best-effort metric priming — never crash startup
+    try:
+        update_model_metrics_from_mlflow()
+    except Exception as e:
+        print(f"[metrics] model gauge priming failed (non-fatal): {e}")
+ 
+
+
+# =========================================================================
+# Helpers
+# =========================================================================
+
 
 def model_dep() -> ModelService:
     return get_model_service()
@@ -173,6 +232,53 @@ def predict_batch(request: BatchPredictRequest, service: ModelService = Depends(
         ))
     total_ms = (time.perf_counter() - start) * 1000
 
+    return BatchPredictionResponse(
+        predictions=predictions,
+        total_items=len(predictions),
+        total_inference_ms=round(total_ms, 2),
+    )
+
+# CodeBlock from Ice, 22.04.2026
+@app.post("/predict/batch/upload", response_model=BatchPredictionResponse, tags=["Prediction"])
+async def predict_batch_with_upload(
+    item_names: list[str] = Form(...),
+    item_captions: list[str] = Form(...),
+    images: list[UploadFile] = File(...),
+    service: ModelService = Depends(model_dep),
+):
+    """Batch prediction with uploaded images. All three lists must have equal length."""
+    if not (len(item_names) == len(item_captions) == len(images)):
+        raise HTTPException(400, "Lists of names, captions, and images must match in length.")
+
+    start = time.perf_counter()
+    predictions = []
+    temp_paths = []
+
+    try:
+        # Save all uploaded images to temp files first
+        for img in images:
+            suffix = Path(img.filename).suffix or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(img.file, tmp)
+                temp_paths.append(tmp.name)
+
+        # Run prediction for each item
+        for i in range(len(temp_paths)):
+            result = service.predict(item_names[i], item_captions[i], temp_paths[i])
+            for color in result["predicted"]:
+                color_predictions_counter.labels(color=color).inc()
+            predictions.append(PredictionResponse(
+                predicted_colors=result["predicted"],
+                all_scores=_build_scores(result),
+                model_type=result["model_type"],
+                inference_ms=result["inference_ms"],
+            ))
+    finally:
+        # Always clean up temp files
+        for path in temp_paths:
+            Path(path).unlink(missing_ok=True)
+
+    total_ms = (time.perf_counter() - start) * 1000
     return BatchPredictionResponse(
         predictions=predictions,
         total_items=len(predictions),
@@ -321,11 +427,22 @@ def health_check(service: ModelService = Depends(model_dep)):
     )
 
 
-@app.on_event("startup")
-async def startup():
-    print("\n" + "=" * 50)
-    print("  Rakuten Color Extraction API")
-    print("=" * 50)
-    svc = get_model_service()
-    print(f"  Model: {svc.model_type} | Device: {svc.device} | Mock: {svc.is_mock}")
-    print("=" * 50 + "\n")
+@app.post("/admin/reload", tags=["Admin"])
+def reload_champion():
+    """Reload champion model from MLflow Registry.
+
+    Call this after Airflow promotes a new champion so the API picks it up
+    without a container restart. Updates Prometheus model gauges as well.
+    """
+    service = reload_model_service()
+    update_model_metrics_from_mlflow()
+    info = service.get_info()
+    return {
+        "status": "reloaded",
+        "model_type": info["model_type"],
+        "model_source": info["model_source"],
+        "is_mock": info["is_mock"],
+        "device": info["device"],
+    }
+
+

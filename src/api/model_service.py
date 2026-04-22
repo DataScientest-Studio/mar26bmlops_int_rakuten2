@@ -353,3 +353,16 @@ def get_model_service() -> ModelService:
         print("\n-> Loading models...")
         _service = ModelService()
     return _service
+
+def reload_model_service() -> ModelService:
+    """Force a fresh load of the champion model from MLflow Registry.
+
+    Used by the /admin/reload endpoint after Airflow promotes a new champion.
+    Replaces the cached singleton so subsequent requests use the new model.
+    On load failure, the new (potentially fallback) service is still returned —
+    check its is_mock / model_source fields to verify what actually loaded.
+    """
+    global _service
+    print("\n-> Reloading model service...")
+    _service = ModelService()
+    return _service

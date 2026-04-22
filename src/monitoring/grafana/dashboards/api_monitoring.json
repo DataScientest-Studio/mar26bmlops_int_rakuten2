@@ -1,0 +1,126 @@
+{
+  "title": "Rakuten Color Predictor",
+  "uid": "rakuten-api",
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "time": { "from": "now-1d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Predictions",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "sum(rakuten_color_predictions_total)", "legendFormat": "Total" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Request Rate (req/s)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "sum(rate(rakuten_requests_total{endpoint!~\"/health|/metrics/?\"}[1m]))", "legendFormat": "req/s" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "p95 Latency",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 2.0 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.95, sum by (le) (rate(rakuten_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 1001,
+      "title": "Color Predictions (last 1d)",
+      "type": "bargauge",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 14 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "vertical",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "round(sum by (color) (increase(rakuten_color_predictions_total[1d])))", "legendFormat": "{{color}}", "range": true }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Request Latency",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 5 },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.50, sum by (le) (rate(rakuten_request_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.95, sum by (le) (rate(rakuten_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.99, sum by (le) (rate(rakuten_request_duration_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Request Rate by Endpoint",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 5 },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "rate(rakuten_requests_total{endpoint!~\"/health|/metrics/?\"}[1m])", "legendFormat": "{{method}} {{endpoint}} {{status_code}}" }
+      ]
+    }
+  ]
+}

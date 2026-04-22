@@ -158,8 +158,23 @@ with DAG(
         python_callable=task_compare_and_promote,
     )
 
+    # After compare_and_promote: trigger API reload so the freshly-promoted
+    # champion is served without a container restart. `|| true` at the end
+    # keeps the DAG green even if the API happens to be down — reload will
+    # happen on next API start anyway.
+
+    reload_api = BashOperator(
+        task_id="reload_api_champion",
+        bash_command=(
+            "curl -sS -X POST -m 30 "
+            "http://api:8000/admin/reload "
+            "-H 'Content-Type: application/json' || true"
+        ),
+        trigger_rule="all_done",
+    )
+ 
     check >> train_tasks[0]
-    train_tasks[-1] >> compare
+    train_tasks[-1] >> compare >> reload_api
 
 
 
