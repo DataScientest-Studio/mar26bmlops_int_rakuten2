@@ -35,6 +35,7 @@ DOCKER_TRAIN_CMD = (
     "-v /home/mirco/rakuten2/data:/app/data "
     "-v /home/mirco/rakuten2/models:/app/models "
     "-v /home/mirco/rakuten2/db:/app/db "
+    "-v /home/mirco/rakuten2/reports:/app/reports"
     # Use host cache directly — no need to populate a named volume
     "-v /home/mirco/.cache/huggingface:/root/.cache/huggingface "
     "-w /app "

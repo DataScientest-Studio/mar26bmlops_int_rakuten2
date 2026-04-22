@@ -336,6 +336,39 @@ IMAGE_SOURCE=local \
 uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 
+6. create csv for drift_report
+docker compose exec api python -m src.models.predict_model_final \
+  --split val --model-alias champion
+
+OR GPU!!
+
+docker compose --profil training run --rm training \
+  python -m src.models_predict_final \
+    --split val --model-alias champion
+
+OR drift report Ver 2:
+docker compose exec api python -m src.models.predict_model_final --split val   --model-alias champion
+docker compose exec api python -m src.models.predict_model_final --split train --model-alias champion
+
+
 
 evidently
 cmd.exe /c start chrome "$(wslpath -w reports/drift_report.html)"
+
+
+
+
+# mulitple requests
+
+# In Streamlit (Tab „Live Demo") 2-3 Predictions machen,
+# oder per curl:
+
+# Farbe vorhersagen lassen (ohne Bild):
+curl -X POST "http://localhost:8000/predict/upload?item_name=test&item_caption=red%20shoe" \
+  -F "image=@data/sample_500/images/$(ls data/sample_500/images | head -1)"
+
+# Nochmal ein paar mal für mehr Datenpunkte:
+for i in {1..5}; do
+  curl -X POST "http://localhost:8000/predict/upload?item_name=test${i}&item_caption=blue%20shirt" \
+    -F "image=@data/sample_500/images/$(ls data/sample_500/images | head -1)" > /dev/null 2>&1
+done

@@ -108,6 +108,7 @@ services:
       - ./models:/app/models
       - ./db:/app/db
       - hf_cache:/root/.cache/huggingface
+      - ./reports:/app/reports
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 
     healthcheck:
@@ -133,6 +134,7 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      IMAGE_SOURCE: local                             # for speed, dosn't matter whats in .env
     depends_on:
       mlflow:
         condition: service_healthy
@@ -140,6 +142,7 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./db:/app/db
+      - ./reports:/app/reports
     shm_size: '4gb'
     deploy:
       resources:
