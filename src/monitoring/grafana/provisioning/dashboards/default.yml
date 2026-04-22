@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning — tells Grafana to auto-load any *.json
+# files from /var/lib/grafana/dashboards on startup.
+# Docs: https://grafana.com/docs/grafana/latest/administration/provisioning/#dashboards
+apiVersion: 1
+
+providers:
+  - name: rakuten-dashboards
+    orgId: 1
+    folder: ""                    # top-level folder in Grafana UI
+    type: file
+    disableDeletion: false        # allow manual deletion from UI
+    updateIntervalSeconds: 30     # re-scan dashboards folder every 30s
+    allowUiUpdates: true          # edits in UI persist until container restart
+    options:
+      # Container-side path — must match the volume mount in docker-compose.yml
+      path: /var/lib/grafana/dashboards
