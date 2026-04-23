@@ -1,0 +1,138 @@
+{
+  "title": "Model Training",
+  "uid": "rakuten-training",
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Champion F1 Score",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.3 },
+              { "color": "green", "value": 0.6 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "rakuten_champion_f1", "legendFormat": "Champion F1" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Champion Version",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "rakuten_champion_version", "legendFormat": "Version" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Total Versions Trained",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "count(rakuten_training_run_f1)", "legendFormat": "Versions" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "F1 Score per Version",
+      "type": "bargauge",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "text": { "titleSize": 12, "valueSize": 14 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.2 },
+              { "color": "green", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "sort_desc(rakuten_training_run_f1)", "legendFormat": "v{{model_version}}", "instant": true }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Training Duration per Version",
+      "type": "bargauge",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 300 },
+              { "color": "red", "value": 600 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "rakuten_training_duration_seconds", "legendFormat": "v{{model_version}}", "instant": true }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Champion F1 Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "rakuten_champion_f1", "legendFormat": "Champion F1" }
+      ]
+    }
+  ]
+}
