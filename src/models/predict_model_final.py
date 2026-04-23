@@ -513,7 +513,6 @@ def predict(
             print(f"Saved Rakuten submission file to {submission_path}")
         print(f"{non_empty:,} with tags ({non_empty / len(df_test):.1%})")
         print(f"{len(df_test) - non_empty:,} empty")
-
         print("\nModel source:")
         print(f"  model_name:    {model_name}")
         print(f"  model_uri:     {resolved_model_uri}")

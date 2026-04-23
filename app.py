@@ -279,7 +279,11 @@ def warn(text: str):
 
 def show_image(path: Path, caption: str = ""):
     if path.exists():
-        st.image(str(path), use_container_width=True, caption=caption)
+        col1, col2, col3 = st.columns([1, 3, 1])
+        with col2:
+            # width=650 statt full-width — sieht in Wide-Layout sauberer aus
+            # caption wird mitgegeben damit die Quellenangabe nicht verloren geht
+            st.image(str(path), width=650, caption=caption)
     else:
         st.info(f"Missing image: {path.name}")
 

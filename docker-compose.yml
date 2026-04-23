@@ -143,6 +143,7 @@ services:
       - ./models:/app/models
       - ./db:/app/db
       - ./reports:/app/reports
+      - ./src:/app/src
     shm_size: '4gb'
     deploy:
       resources:
