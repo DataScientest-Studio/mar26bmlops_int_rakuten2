@@ -8,16 +8,13 @@ db_url = "postgresql://postgres:postgres@postgres:5432/rakuten"
 
 TOTAL_TRAIN = 190_908
 APP_ROOT = "/opt/airflow/app"
+PROJECT_ROOT = "/Users/ice/Repositories/Liora/mar26bmlops_int_rakuten2"
 
-RUN_CONFIGS = []
-for i, n_images in enumerate(range(100_000, 180_000, 10_000)):
-    fraction = round(n_images / TOTAL_TRAIN, 3)
-    RUN_CONFIGS.append({
-        "run_index": i + 1,
-        "n_images": n_images,
-        "data_fraction": fraction,
-        "epochs": 3,
-    })
+RUN_CONFIGS = [
+    {"run_index": 1, "n_images": 31, "data_fraction": 1.0, "epochs": 1, "skip_champion": True},
+    {"run_index": 2, "n_images": 31, "data_fraction": 1.0, "epochs": 2, "skip_champion": False},
+    {"run_index": 3, "n_images": 31, "data_fraction": 1.0, "epochs": 3, "skip_champion": False},
+]
 
 default_args = {
     "owner": "rakuten-mlops",
@@ -26,16 +23,18 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
-# Docker command template for GPU training
+# Docker command template for CPU training (Mac)
 DOCKER_TRAIN_CMD = (
-    "docker run --rm --gpus all "
-    "--shm-size=4g "
-    "--network rakuten2_default "
-    "-v /home/mirco/rakuten2/data:/app/data "
-    "-v /home/mirco/rakuten2/models:/app/models "
-    "-v /home/mirco/rakuten2/db:/app/db "
+    "docker run --rm "
+    "--network mar26bmlops_int_rakuten2_default "
+    f"-v {PROJECT_ROOT}/data:/app/data "
+    f"-v {PROJECT_ROOT}/data/images_small_run:/app/data/images "
+    f"-v {PROJECT_ROOT}/models:/app/models "
+    f"-v {PROJECT_ROOT}/db:/app/db "
+    f"-v {PROJECT_ROOT}/.hf_cache:/root/.cache/huggingface "
     "-w /app "
     "-e MLFLOW_TRACKING_URI=http://mlflow:5000 "
+    "-e HF_TOKEN=${{HF_TOKEN}} "
     "-e AWS_ACCESS_KEY_ID=admin "
     "-e AWS_SECRET_ACCESS_KEY=pwd_123_SIMV "
     "-e MLFLOW_S3_ENDPOINT_URL=http://minio:9000 "
@@ -44,7 +43,7 @@ DOCKER_TRAIN_CMD = (
     "-e IMAGE_SOURCE=local "
     "rakuten2-training "
     "python -m src.models.train_model_final "
-    "--data-fraction {fraction} --epochs {epochs}"
+    "--data-fraction {fraction} --epochs {epochs}{skip_champion}"
 )
 
 
@@ -63,8 +62,8 @@ def task_check_prerequisites(**context):
     counts = dict(cur.fetchall())
     conn.close()
     print(f"DB products: {counts}")
-    assert counts.get("train", 0) > 100_000, f"Not enough training data"
-    assert counts.get("val", 0) > 10_000, f"Not enough val data"
+    assert counts.get("train", 0) > 100, f"Not enough training data"
+    assert counts.get("val", 0) > 100, f"Not enough val data"
 
     # Check MLflow
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
@@ -83,24 +82,29 @@ def task_compare_and_promote(**context):
     client = MlflowClient(tracking_uri=tracking_uri)
     model_name = os.getenv("MLFLOW_REGISTERED_MODEL_NAME", "rakuten-ice-dual-encoder")
 
-    # Get all model versions, find the 8 most recent
     versions = client.search_model_versions(f"name='{model_name}'")
     if not versions:
         raise RuntimeError("No model versions found")
 
-    recent = sorted(versions, key=lambda v: int(v.version), reverse=True)[:8]
+    all_versions = sorted(versions, key=lambda v: int(v.version), reverse=True)
+    recent = all_versions[:8]
 
+    # Find overall champion across all versions
     best = None
     best_f1 = -1
-    results = []
+    for v in all_versions:
+        run = client.get_run(v.run_id)
+        f1 = run.data.metrics.get("best_val_f1_micro", 0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best = v
 
+    # Collect metrics only for the 8 most recent runs (for the bar chart)
+    results = []
     for v in recent:
         run = client.get_run(v.run_id)
         f1 = run.data.metrics.get("best_val_f1_micro", 0)
         results.append({"version": v.version, "run_id": v.run_id, "f1": f1})
-        if f1 > best_f1:
-            best_f1 = f1
-            best = v
 
     print(f"\n{'='*60}")
     for r in sorted(results, key=lambda x: x["f1"], reverse=True):
@@ -109,7 +113,7 @@ def task_compare_and_promote(**context):
     print(f"{'='*60}")
 
     client.set_registered_model_alias(name=model_name, alias="champion", version=best.version)
-    print(f"Champion set: v{best.version} (F1={best_f1:.4f})")
+    print(f"Champion set: v{best.version} (F1={best_f1:.4f}) [overall best across all {len(all_versions)} versions]")
 
     from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
@@ -167,6 +171,7 @@ with DAG(
             bash_command=DOCKER_TRAIN_CMD.format(
                 fraction=cfg["data_fraction"],
                 epochs=cfg["epochs"],
+                skip_champion=" --skip-champion-compare" if cfg.get("skip_champion") else "",
             ),
             cwd="/opt/airflow/app",  # project root where docker-compose.yml lives
         )
