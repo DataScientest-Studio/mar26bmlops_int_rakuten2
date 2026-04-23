@@ -447,7 +447,7 @@ with tab2:
         card("Metadata", "runtime information, timestamps and experiment context")
 
     note(
-        "<b>Presentation message:</b> MLflow improved reproducibility, comparison, version control and deployment readiness."
+        "<b>MLflow improved reproducibility, comparison, version control and deployment readiness.</b> "
     )
 
 
@@ -494,8 +494,8 @@ with tab3:
         )
 
     note(
-        "<b>Presentation message:</b> MLflow connects experimentation with deployment. "
-        "It transforms isolated training runs into a structured machine learning workflow."
+        "<b>MLflow connects experimentation with deployment."
+        " It transforms isolated training runs into a structured machine learning workflow.</b> "
     )
 
 
@@ -528,19 +528,20 @@ with tab4:
             • runtime
             """
         )
-        st.markdown(
+
+
+    with right:
+        show_image(
+            IMG_METRICS,
+            caption="Tracked metrics dashboard"
+        )
+    st.markdown(
             """
             <div class="small-muted">
             This proves that model quality is measured systematically and not guessed manually.
             </div>
             """,
             unsafe_allow_html=True
-        )
-
-    with right:
-        show_image(
-            IMG_METRICS,
-            caption="Tracked metrics dashboard"
         )
 
     st.divider()
@@ -570,22 +571,21 @@ with tab4:
 
     # 3 Registry
     st.markdown("### 3. Model Registry and Promotion")
-    left, right = st.columns([1.5, 1])
 
-    with left:
-        show_image(
-            IMG_REG,
-            caption="Registry with model versions and aliases"
-        )
+    st.image(
+        IMG_REG,
+        caption="Registry with model versions and aliases",
+        width=820
+    )
 
-    with right:
-        info(
-            """
-            <b>Operational meaning:</b><br><br>
-            Versioned models are managed centrally.<br><br>
-            The best validated model can be promoted and used as the selected serving candidate.
-            """
-        )
+    info(
+        """
+        <b>Operational meaning:</b><br><br>
+        Versioned models are managed centrally.<br>
+        Champion and Candidate aliases simplify deployment decisions.<br>
+        The best validated model can be promoted safely into production.
+        """
+    )
         # 4 Compare & Promote Automation
     st.divider()
 
@@ -656,8 +656,8 @@ with tab4:
         )
 
     note(
-        "<b>Presentation message:</b> We automated model selection on top of MLflow. "
-        "The best validated version becomes champion, while the next-best version can remain candidate."
+        "<b>We automated model selection on top of MLflow.</b> "
+        "<b>The best validated version becomes champion, while the next-best version can remain candidate.</b>"
     )
    
 # ======================================================
@@ -740,6 +740,6 @@ with tab5:
         )
 
     note(
-        "<b>Presentation message:</b> This proves that our project is not only theoretical. "
-        "The ML model can be managed and served in a real runtime environment."
+        "<b>This proves that our project is not only theoretical.<b>"
+        "<b>The ML model can be managed and served in a real runtime environment.</b>"
     )
