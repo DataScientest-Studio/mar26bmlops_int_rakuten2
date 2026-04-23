@@ -590,11 +590,11 @@ with tab4:
         The best validated model can be promoted safely into production.
         """
     )
-        # 4 Compare & Promote Automation
+    # 4 Compare & Promote Automation
     st.divider()
 
     st.markdown("## 4. Compare & Promote Automation")
-    st.caption("Automated champion selection using fair model comparison")
+    st.caption("Automated retraining, fair comparison, and model promotion with MLflow aliases")
 
     c1, c2, c3 = st.columns(3)
 
@@ -602,7 +602,7 @@ with tab4:
         promotion_flag_card(
             title="Run A",
             score="0.24",
-            status="evaluated on same validation split",
+            status="30% data fraction tested",
             variant="neutral"
         )
 
@@ -610,7 +610,7 @@ with tab4:
         promotion_flag_card(
             title="Run B",
             score="0.27",
-            status="best micro-F1",
+            status="highest micro-F1 → Champion",
             variant="champion"
         )
 
@@ -618,13 +618,13 @@ with tab4:
         promotion_flag_card(
             title="Run C",
             score="0.25",
-            status="second-best version",
+            status="second-best → Candidate",
             variant="candidate"
         )
 
     st.markdown("")
 
-    left, right = st.columns([1.2, 1])
+    left, right = st.columns([1.25, 1])
 
     with left:
         st.markdown(
@@ -632,12 +632,13 @@ with tab4:
             <div class="premium-panel">
                 <h4>Automated orchestration flow</h4>
                 <ul class="premium-list">
-                    <li>Multiple training jobs run sequentially</li>
-                    <li>Each run can use a larger training data fraction</li>
-                    <li>Every registered version is evaluated on the same validation split</li>
-                    <li>micro-F1 is used for fair comparison</li>
-                    <li>The best validated model is promoted to <b>champion</b></li>
-                    <li>The second-best model can remain <b>candidate</b></li>
+                    <li>Launch multiple sequential training jobs</li>
+                    <li>Use increasing data fractions (30%, 60%, 100%)</li>
+                    <li>Register every trained version in MLflow</li>
+                    <li>Evaluate all versions on the same validation split</li>
+                    <li>Use micro-F1 for objective comparison</li>
+                    <li>Promote the best version to <b>Champion</b></li>
+                    <li>Keep the second-best as <b>Candidate</b></li>
                 </ul>
             </div>
             """,
@@ -647,21 +648,26 @@ with tab4:
     with right:
         st.markdown(
             """
-            <div class="premium-panel">
-                <h4>Why this matters</h4>
-                <p>
-                Instead of choosing models manually, we automate a controlled comparison process.
-                This makes model promotion faster, fairer and more reproducible.
-                It also strengthens governance because deployment decisions are based on measured performance.
-                </p>
-            </div>
+    <div class="premium-panel">
+<h4>Why this matters</h4>
+
+<ul style="font-size:18px; line-height:1.9; padding-left:22px; margin-top:10px;">
+<li>Faster model promotion</li>
+<li>Fair comparison using same validation data</li>
+<li>Reproducible deployment decisions</li>
+<li>Continuous retraining ready</li>
+</ul>
+
+</div>
+           
             """,
             unsafe_allow_html=True
         )
-
+    
     note(
-        "<b>We automated model selection on top of MLflow.</b> "
-        "<b>The best validated version becomes champion, while the next-best version can remain candidate.</b>"
+        "<b>Built on top of MLflow Registry:</b> "
+        "Champion always points to the best validated model, "
+        "while Candidate remains the next deployment option."
     )
    
 # ======================================================

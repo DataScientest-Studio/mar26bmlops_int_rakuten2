@@ -33,7 +33,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import mlflow
+import src.streamlit.mlflow as mlflow
 from mlflow.tracking import MlflowClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
