@@ -122,6 +122,117 @@ def task_compare_and_promote(**context):
     print(f"Champion set: v{best.version} (F1={best_f1:.4f})")
 
 
+    # hooks from ice for prometheus
+    from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+
+    registry = CollectorRegistry()
+    g_run_f1 = Gauge(
+        "rakuten_training_run_f1",
+        "Validation F1 score per training run",
+        ["model_version", "run_id"],
+        registry=registry,
+    )
+    g_duration = Gauge(
+        "rakuten_training_duration_seconds",
+        "Training run duration in seconds",
+        ["model_version"],
+        registry=registry,
+    )
+    g_champion_f1 = Gauge("rakuten_champion_f1", "Champion model F1 score", registry=registry)
+    g_champion_version = Gauge("rakuten_champion_version", "Champion model version number", registry=registry)
+
+    for r in results:
+        g_run_f1.labels(model_version=r["version"], run_id=r["run_id"]).set(r["f1"])
+        run_info = client.get_run(r["run_id"]).info
+        if run_info.end_time and run_info.start_time:
+            duration = (run_info.end_time - run_info.start_time) / 1000
+            g_duration.labels(model_version=r["version"]).set(duration)
+    g_champion_f1.set(best_f1)
+    g_champion_version.set(int(best.version))
+
+    pushgateway_url = os.getenv("PUSHGATEWAY_URL", "pushgateway:9091")
+    push_to_gateway(pushgateway_url, job="rakuten_training", registry=registry)
+    print(f"Metrics pushed to Pushgateway at {pushgateway_url}")
+
+
+    # Connections to ice
+def task_push_train_metrics(run_index: int, **context):
+    """Push the latest MLflow run's training metrics to Prometheus Pushgateway.
+
+    Called after each train_run_X so Grafana can display per-run history
+    even though individual training processes are short-lived.
+    """
+    import os
+    import mlflow
+    from mlflow.tracking import MlflowClient
+    from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+    mlflow.set_tracking_uri(tracking_uri)
+    client = MlflowClient(tracking_uri=tracking_uri)
+
+    # Grab the most recent run from our experiment
+    experiment = mlflow.get_experiment_by_name(
+        os.getenv("MLFLOW_EXPERIMENT", "rakuten_ice_dual_encoder")
+    )
+    if experiment is None:
+        print("[push] MLflow experiment not found — skipping metric push")
+        return
+
+    runs = client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["attributes.start_time DESC"],
+        max_results=1,
+    )
+    if not runs:
+        print("[push] No MLflow runs found — skipping metric push")
+        return
+
+    run = runs[0]
+    metrics = run.data.metrics
+    params = run.data.params
+
+    # Build an isolated registry — don't pollute global
+    registry = CollectorRegistry()
+
+    g_f1_micro = Gauge(
+        "rakuten_training_val_f1_micro",
+        "Val micro-F1 of a training run",
+        ["run_index", "data_fraction"],
+        registry=registry,
+    )
+    g_f1_macro = Gauge(
+        "rakuten_training_val_f1_macro",
+        "Val macro-F1 of a training run",
+        ["run_index", "data_fraction"],
+        registry=registry,
+    )
+    g_train_time = Gauge(
+        "rakuten_training_duration_seconds",
+        "How long training took",
+        ["run_index", "data_fraction"],
+        registry=registry,
+    )
+
+    data_fraction = params.get("data_fraction", "unknown")
+    f1_micro = metrics.get("best_val_f1_micro", metrics.get("val_f1_micro", 0))
+    f1_macro = metrics.get("best_val_f1_macro", metrics.get("val_f1_macro", 0))
+    duration = (run.info.end_time - run.info.start_time) / 1000 if run.info.end_time else 0
+
+    g_f1_micro.labels(run_index=str(run_index), data_fraction=data_fraction).set(f1_micro)
+    g_f1_macro.labels(run_index=str(run_index), data_fraction=data_fraction).set(f1_macro)
+    g_train_time.labels(run_index=str(run_index), data_fraction=data_fraction).set(duration)
+
+    # Push — job label identifies this group of metrics in Pushgateway
+    push_to_gateway(
+        "pushgateway:9091",
+        job=f"rakuten_training_run_{run_index}",
+        registry=registry,
+    )
+    print(f"[push] Run {run_index}: f1_micro={f1_micro:.4f}, "
+          f"f1_macro={f1_macro:.4f}, duration={duration:.1f}s")
+
+
 with DAG(
     dag_id="rakuten_incremental_training",
     default_args=default_args,
