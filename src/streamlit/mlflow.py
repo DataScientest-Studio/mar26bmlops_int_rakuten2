@@ -13,7 +13,7 @@ MODEL_INFO_ENDPOINT = f"{API_URL}/model/info"
 HEALTH_ENDPOINT = f"{API_URL}/health"
 
 BASE_DIR = Path(__file__).resolve().parent
-ASSET_DIR = BASE_DIR / "mlflow" / "assets"
+ASSET_DIR = BASE_DIR.parent.parent / "mlflow" / "assets"
 
 IMG_INTRO = ASSET_DIR / "Intro_tab_MLFLOW.png"
 IMG_DEPLOY = ASSET_DIR / "Training_Deployment.png"
@@ -279,9 +279,12 @@ def show_image(path: Path, caption: str = ""):
     if path.exists():
         col1, col2, col3 = st.columns([1,3,1])
         with col2:
-            st.image(path   , width=650)
+            st.image(path, width=650)
+
+            if caption:
+                st.caption(caption)
     else:
-        st.info(f"Missing image: {path.name}")
+        st.warning(f"Image not found: {path}")
 
 def promotion_flag_card(title: str, score: str, status: str, variant: str = "neutral"):
     label = "Tested"
@@ -464,6 +467,7 @@ with tab3:
         IMG_INTRO,
         caption="Source: Bytepawn.com — adapted for academic presentation"
     )
+    
 
     st.divider()
 
