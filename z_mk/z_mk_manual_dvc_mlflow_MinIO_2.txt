@@ -351,10 +351,12 @@ docker compose exec api python -m src.models.predict_model_final --split val   -
 docker compose exec api python -m src.models.predict_model_final --split train --model-alias champion
 
 
-
+Generals:
 evidently
 cmd.exe /c start chrome "$(wslpath -w reports/drift_report.html)"
 
+training build struct
+docker compose --profile training build training
 
 
 

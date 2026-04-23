@@ -479,7 +479,9 @@ def predict(
     # Save CSV report
     # --------------------------------------------------------
     details_path = None
+    submission_path = None
     if save_outputs:
+        # Standard output with product_id + image (used by drift + analysis)
         output_df = pd.DataFrame({
             "product_id": df_test["product_id"] if "product_id" in df_test.columns else pd.Series(range(len(df_test))),
             "image_file_name": df_test["image_file_name"],
@@ -487,35 +489,52 @@ def predict(
         })
         output_df.to_csv(out_path, index=False)
 
+        # Detailed report with top-5 probs (used by drift score-distribution report)
         details_path = out_path.with_name(out_path.stem + "_details.csv")
         pd.DataFrame(prediction_rows).to_csv(details_path, index=False)
+
+        # -- Rakuten challenge submission format (only for test split) --
+        # Required:
+        #   - unnamed 0-based integer index (NOT product_id)
+        #   - color_tags as Python-style list literal: ['Pink', 'Blue']
+        #     (pandas default; NOT JSON with escaped double-quotes)
+        if split == "test":
+            submission_df = pd.DataFrame({
+                "color_tags": [predictions[i] for i in range(len(df_test))],
+            })
+            # index=True with no index name -> leading unnamed column "0,1,2,..."
+            submission_path = out_path.with_name("submission.csv")
+            submission_df.to_csv(submission_path, index=True, header=True)
 
         non_empty = sum(1 for t in predictions.values() if t)
         print(f"\nSaved {len(output_df):,} predictions to {out_path}")
         print(f"Saved detailed prediction report to {details_path}")
+        if submission_path:
+            print(f"Saved Rakuten submission file to {submission_path}")
         print(f"{non_empty:,} with tags ({non_empty / len(df_test):.1%})")
         print(f"{len(df_test) - non_empty:,} empty")
 
-    print("\nModel source:")
-    print(f"  model_name:    {model_name}")
-    print(f"  model_uri:     {resolved_model_uri}")
-    print(f"  model_version: {resolved_model_version}")
-    print(f"  source_run_id: {source_run_id}")
-    print(f"  db_run_id:     {db_prediction_run_id}")
+        print("\nModel source:")
+        print(f"  model_name:    {model_name}")
+        print(f"  model_uri:     {resolved_model_uri}")
+        print(f"  model_version: {resolved_model_version}")
+        print(f"  source_run_id: {source_run_id}")
+        print(f"  db_run_id:     {db_prediction_run_id}")
 
-    return {
-        "predictions": predictions,
-        "output_csv": str(out_path) if save_outputs else None,
-        "details_csv": str(details_path) if details_path else None,
-        "model_name": model_name,
-        "model_uri": resolved_model_uri,
-        "model_version": resolved_model_version,
-        "source_run_id": source_run_id,
-        "db_run_id": db_prediction_run_id,
-        "f1_micro": f1_micro,
-        "split": split,
-        "threshold": threshold,
-    }
+        return {
+            "predictions": predictions,
+            "output_csv": str(out_path) if save_outputs else None,
+            "details_csv": str(details_path) if details_path else None,
+            "submission_csv": str(submission_path) if submission_path else None,   # NE
+            "model_name": model_name,
+            "model_uri": resolved_model_uri,
+            "model_version": resolved_model_version,
+            "source_run_id": source_run_id,
+            "db_run_id": db_prediction_run_id,
+            "f1_micro": f1_micro,
+            "split": split,
+            "threshold": threshold,
+        }
 
 
 # ============================================================
