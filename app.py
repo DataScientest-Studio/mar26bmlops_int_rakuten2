@@ -277,7 +277,9 @@ def warn(text: str):
 
 def show_image(path: Path, caption: str = ""):
     if path.exists():
-        st.image(str(path), use_container_width=True, caption=caption)
+        col1, col2, col3 = st.columns([1,3,1])
+        with col2:
+            st.image(path   , width=650)
     else:
         st.info(f"Missing image: {path.name}")
 
@@ -311,12 +313,11 @@ st.title("Rakuten MLOps System")
 st.caption("MLflow Tracking, Registry, Model Governance and Production Validation")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["Live Demo", "MLflow Workflow", "Why MLflow", "MLflow Lifecycle", "Live Validation"]
+    ["Live Demo", "Why MLflow", "MLflow Workflow", "MLflow Lifecycle", "Live Validation"]
 )
 
 # ======================================================
 # TAB 1 — LIVE DEMO
-# ORIGINAL VERSION
 # ======================================================
 with tab1:
     st.title("🛍️ Rakuten Color Predictor")
@@ -396,56 +397,9 @@ The model will predict the primary color using the Dual-Encoder weights.""")
                     st.error(f"An unexpected error occurred: {e}")
 
 # ======================================================
-# TAB 2 — MLFLOW WORKFLOW
+# TAB 2 — WHY MLFLOW
 # ======================================================
 with tab2:
-    hero(
-        "MLflow in Our End-to-End Workflow",
-        "How experiment tracking and model governance fit into our MLOps architecture."
-    )
-
-    show_image(
-        IMG_INTRO,
-        caption="Source: Bytepawn.com — adapted for academic presentation"
-    )
-
-    st.divider()
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-        card(
-            "Track Runs",
-            "Store parameters, metrics, artifacts and model outputs for every training run."
-        )
-
-    with c2:
-        card(
-            "Compare Results",
-            "Evaluate multiple experiments in a reproducible and structured way."
-        )
-
-    with c3:
-        card(
-            "Register Versions",
-            "Promote successful runs into governed model versions instead of unmanaged local files."
-        )
-
-    with c4:
-        card(
-            "Deploy Safely",
-            "Connect experiment management with model-serving decisions and deployment readiness."
-        )
-
-    note(
-        "<b>Presentation message:</b> MLflow connects experimentation with deployment. "
-        "It transforms isolated training runs into a structured machine learning workflow."
-    )
-
-# ======================================================
-# TAB 3 — WHY MLFLOW
-# ======================================================
-with tab3:
     hero(
         "Why We Introduced MLflow",
         "From manual experimentation to professional model lifecycle management."
@@ -496,6 +450,55 @@ with tab3:
         "<b>Presentation message:</b> MLflow improved reproducibility, comparison, version control and deployment readiness."
     )
 
+
+# ======================================================
+# TAB 3 — MLFLOW WORKFLOW
+# ======================================================
+with tab3:
+    hero(
+        "MLflow in Our End-to-End Workflow",
+        "How experiment tracking and model governance fit into our MLOps architecture."
+    )
+
+    show_image(
+        IMG_INTRO,
+        caption="Source: Bytepawn.com — adapted for academic presentation"
+    )
+
+    st.divider()
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        card(
+            "Track Runs",
+            "Store parameters, metrics, artifacts and model outputs for every training run."
+        )
+
+    with c2:
+        card(
+            "Compare Results",
+            "Evaluate multiple experiments in a reproducible and structured way."
+        )
+
+    with c3:
+        card(
+            "Register Versions",
+            "Promote successful runs into governed model versions instead of unmanaged local files."
+        )
+
+    with c4:
+        card(
+            "Deploy Safely",
+            "Connect experiment management with model-serving decisions and deployment readiness."
+        )
+
+    note(
+        "<b>Presentation message:</b> MLflow connects experimentation with deployment. "
+        "It transforms isolated training runs into a structured machine learning workflow."
+    )
+
+
 # ======================================================
 # TAB 4 — MLFLOW LIFECYCLE
 # ======================================================
@@ -505,10 +508,7 @@ with tab4:
         "From training to tracking, registry and deployment."
     )
 
-    show_image(
-        IMG_DEPLOY,
-        caption="Source: BingInfo.in — adapted for educational use"
-    )
+    show_image( IMG_DEPLOY, caption="Source: BingInfo.in — adapted for educational use" )
 
     st.divider()
     st.subheader("Real Project Evidence")
