@@ -342,9 +342,9 @@ docker compose exec api python -m src.models.predict_model_final \
 
 OR GPU!!
 
-docker compose --profil training run --rm training \
-  python -m src.models_predict_final \
-    --split val --model-alias champion
+docker compose --profile training run --rm training \
+  python -m src.models.predict_model_final \
+  --split val --model-alias champion
 
 OR drift report Ver 2:
 docker compose exec api python -m src.models.predict_model_final --split val   --model-alias champion
@@ -372,3 +372,46 @@ for i in {1..5}; do
   curl -X POST "http://localhost:8000/predict/upload?item_name=test${i}&item_caption=blue%20shirt" \
     -F "image=@data/sample_500/images/$(ls data/sample_500/images | head -1)" > /dev/null 2>&1
 done
+
+
+listene best version:
+
+docker compose exec api python -c "
+from mlflow.tracking import MlflowClient
+client = MlflowClient('http://mlflow:5000')
+versions = client.search_model_versions(\"name='rakuten-ice-dual-encoder'\")
+print(f'{\"v\":>4} {\"f1_micro\":>10} {\"f1_macro\":>10} {\"data_frac\":>10} {\"epochs\":>7} {\"run_id\":>10}')
+print('-' * 65)
+for v in sorted(versions, key=lambda x: int(x.version)):
+    try:
+        run = client.get_run(v.run_id)
+        m = run.data.metrics
+        p = run.data.params
+        f1_mic = m.get('best_val_f1_micro', m.get('val_f1_micro', 0))
+        f1_mac = m.get('best_val_f1_macro', m.get('val_f1_macro', 0))
+        frac = p.get('data_fraction', '?')
+        ep = p.get('epochs', '?')
+        aliases = ','.join(v.aliases) if v.aliases else ''
+        star = ' <- CHAMPION' if 'champion' in v.aliases else ''
+        print(f'{v.version:>4} {f1_mic:>10.4f} {f1_mac:>10.4f} {frac:>10} {ep:>7}  {v.run_id[:8]}{star}')
+    except Exception as e:
+        print(f'{v.version:>4}  ERROR: {e}')
+"
+
+
+# CHAMPION
+# Angenommen Version 5 war dein bester (anpassen!):
+docker compose exec api python -c "
+from mlflow.tracking import MlflowClient
+client = MlflowClient('http://mlflow:5000')
+BEST_VERSION = '5'   # ← anpassen auf den Winner aus dem Listing oben!
+client.set_registered_model_alias(
+    name='rakuten-ice-dual-encoder',
+    alias='champion',
+    version=BEST_VERSION,
+)
+print(f'Champion alias moved to version {BEST_VERSION}')
+"
+
+# Dann API zum Reload triggern:
+curl -X POST http://localhost:8000/admin/reload

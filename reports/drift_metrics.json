@@ -1,1 +1,123 @@
-{"error": "prediction files missing"}
+{
+  "n_labels": 19,
+  "n_drifted": 0,
+  "drift_share": 0.0,
+  "max_drift": 0.0072,
+  "mean_drift": 0.0019,
+  "labels": {
+    "Black": {
+      "train_prevalence": 0.3772,
+      "val_prevalence": 0.3754,
+      "drift": 0.0018,
+      "drifted": false
+    },
+    "White": {
+      "train_prevalence": 0.2698,
+      "val_prevalence": 0.2687,
+      "drift": 0.0011,
+      "drifted": false
+    },
+    "Grey": {
+      "train_prevalence": 0.2146,
+      "val_prevalence": 0.216,
+      "drift": 0.0014,
+      "drifted": false
+    },
+    "Navy": {
+      "train_prevalence": 0.223,
+      "val_prevalence": 0.2276,
+      "drift": 0.0045,
+      "drifted": false
+    },
+    "Blue": {
+      "train_prevalence": 0.2674,
+      "val_prevalence": 0.2746,
+      "drift": 0.0072,
+      "drifted": false
+    },
+    "Red": {
+      "train_prevalence": 0.1862,
+      "val_prevalence": 0.1906,
+      "drift": 0.0044,
+      "drifted": false
+    },
+    "Pink": {
+      "train_prevalence": 0.2148,
+      "val_prevalence": 0.2175,
+      "drift": 0.0026,
+      "drifted": false
+    },
+    "Brown": {
+      "train_prevalence": 0.2448,
+      "val_prevalence": 0.2442,
+      "drift": 0.0006,
+      "drifted": false
+    },
+    "Beige": {
+      "train_prevalence": 0.2155,
+      "val_prevalence": 0.2154,
+      "drift": 0.0,
+      "drifted": false
+    },
+    "Green": {
+      "train_prevalence": 0.2003,
+      "val_prevalence": 0.2044,
+      "drift": 0.0041,
+      "drifted": false
+    },
+    "Khaki": {
+      "train_prevalence": 0.0694,
+      "val_prevalence": 0.068,
+      "drift": 0.0013,
+      "drifted": false
+    },
+    "Orange": {
+      "train_prevalence": 0.0867,
+      "val_prevalence": 0.0855,
+      "drift": 0.0012,
+      "drifted": false
+    },
+    "Yellow": {
+      "train_prevalence": 0.1225,
+      "val_prevalence": 0.1226,
+      "drift": 0.0001,
+      "drifted": false
+    },
+    "Purple": {
+      "train_prevalence": 0.0698,
+      "val_prevalence": 0.0678,
+      "drift": 0.002,
+      "drifted": false
+    },
+    "Burgundy": {
+      "train_prevalence": 0.0187,
+      "val_prevalence": 0.0186,
+      "drift": 0.0001,
+      "drifted": false
+    },
+    "Gold": {
+      "train_prevalence": 0.0581,
+      "val_prevalence": 0.0579,
+      "drift": 0.0002,
+      "drifted": false
+    },
+    "Silver": {
+      "train_prevalence": 0.1088,
+      "val_prevalence": 0.106,
+      "drift": 0.0028,
+      "drifted": false
+    },
+    "Transparent": {
+      "train_prevalence": 0.0425,
+      "val_prevalence": 0.0431,
+      "drift": 0.0006,
+      "drifted": false
+    },
+    "Multiple Colors": {
+      "train_prevalence": 0.106,
+      "val_prevalence": 0.1055,
+      "drift": 0.0005,
+      "drifted": false
+    }
+  }
+}
