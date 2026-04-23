@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import os
 import pandas as pd
@@ -15,6 +16,8 @@ HEALTH_ENDPOINT = f"{API_URL}/health"
 
 BASE_DIR = Path(__file__).resolve().parent
 ASSET_DIR = BASE_DIR / "mlflow" / "assets"
+FIGURES_DIR = BASE_DIR / "reports" / "figures"
+DRIFT_REPORT = BASE_DIR / "reports" / "data_drift_report.html"
 
 IMG_INTRO = ASSET_DIR / "Intro_tab_MLFLOW.png"
 IMG_DEPLOY = ASSET_DIR / "Training_Deployment.png"
@@ -311,8 +314,8 @@ def promotion_flag_card(title: str, score: str, status: str, variant: str = "neu
 st.title("Rakuten MLOps System")
 st.caption("MLflow Tracking, Registry, Model Governance and Production Validation")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["MLflow Workflow", "Why MLflow", "MLflow Lifecycle", "Live Validation", "Live Demo"]
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+    ["MLflow Workflow", "Why MLflow", "MLflow Lifecycle", "Monitoring", "Live Validation", "Live Demo"]
 )
 
 # ======================================================
@@ -582,9 +585,150 @@ with tab3:
     )
 
 # ======================================================
-# TAB 4 — LIVE VALIDATION
+# TAB 4 — MONITORING
 # ======================================================
 with tab4:
+    hero(
+        "Monitoring",
+        "Real-time API observability and training pipeline metrics via Prometheus and Grafana."
+    )
+
+    monitoring_section = st.selectbox(
+        "Select section",
+        ["Overview", "API Metrics", "Training Metrics", "Data Drift"],
+        label_visibility="collapsed"
+    )
+
+    st.divider()
+
+    # -- OVERVIEW --
+    if monitoring_section == "Overview":
+        st.markdown("### Two Metric Flows")
+        c1, c2 = st.columns(2)
+        with c1:
+            card(
+                "API Metrics",
+                "Emitted continuously by the running API. Every prediction and HTTP request is tracked in real time via Prometheus."
+            )
+        with c2:
+            card(
+                "Training Metrics",
+                "Pushed once at the end of each Airflow pipeline run via Pushgateway. Prometheus scrapes the gateway."
+            )
+        st.markdown("")
+        _, img_col, _ = st.columns([1, 2, 1])
+        with img_col:
+            show_image(FIGURES_DIR / "Monitoring-overview.png")
+        st.markdown(
+            "<div style='text-align:center; color:#475569; font-size:0.95rem;'>"
+            "<b>Both flows end up in Grafana</b>, provisioned automatically — no manual dashboard configuration needed."
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+    # -- API METRICS --
+    elif monitoring_section == "API Metrics":
+        st.markdown("### Prometheus Metrics in the API")
+        img_col, text_col = st.columns([2, 3])
+        with img_col:
+            _, inner, _ = st.columns([0.5, 3, 0.5])
+            with inner:
+                show_image(FIGURES_DIR / "API-metrics-flow.png")
+        with text_col:
+            st.markdown(
+                """
+                <div style="font-size:0.92rem; color:#475569; line-height:1.5;">
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:0.75rem 1rem; margin-bottom:0.5rem;">
+                <b style="color:#0F172A;">rakuten_color_predictions_total</b> — <span style="font-size:0.88rem;">Counter, labeled by color</span><br>
+                Incremented every time a color is predicted.
+                </div>
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:0.75rem 1rem; margin-bottom:0.5rem;">
+                <b style="color:#0F172A;">rakuten_requests_total</b> — <span style="font-size:0.88rem;">Counter, labeled by method, endpoint, status_code</span><br>
+                Tracks every HTTP request.
+                </div>
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:0.75rem 1rem;">
+                <b style="color:#0F172A;">rakuten_request_duration_seconds</b> — <span style="font-size:0.88rem;">Histogram, labeled by method, endpoint</span><br>
+                Records request duration in seconds.
+                </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    # -- TRAINING METRICS --
+    elif monitoring_section == "Training Metrics":
+        st.markdown("### Training Metrics via Pushgateway")
+        _, img_col, text_col, _ = st.columns([0.5, 2, 3, 0.5])
+        with img_col:
+            _, inner, _ = st.columns([0.5, 3, 0.5])
+            with inner:
+                show_image(FIGURES_DIR / "Training-metrics-flow.png")
+        with text_col:
+            st.markdown(
+                """
+                <div style="font-size:0.94rem; color:#475569; line-height:1.5;">
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:0.75rem 1rem; margin-bottom:0.5rem;">
+                <b style="color:#0F172A;">rakuten_training_run_f1</b> — <span style="font-size:0.90rem;">Labeled by model_version and run_id</span><br>
+                F1 score per training run.
+                </div>
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:0.75rem 1rem; margin-bottom:0.5rem;">
+                <b style="color:#0F172A;">rakuten_training_duration_seconds</b> — <span style="font-size:0.90rem;">Labeled by model_version</span><br>
+                Training time per run.
+                </div>
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:0.75rem 1rem; margin-bottom:0.5rem;">
+                <b style="color:#0F172A;">rakuten_champion_f1</b> — <span style="font-size:0.90rem;">Single value</span><br>
+                F1 score of the currently promoted champion model.
+                </div>
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:0.75rem 1rem;">
+                <b style="color:#0F172A;">rakuten_champion_version</b> — <span style="font-size:0.90rem;">Single value</span><br>
+                Version number of the champion.
+                </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    # -- DATA DRIFT --
+    else:
+        st.markdown("### Data Drift with Evidently")
+        info(
+            "Data drift occurs when the statistical distribution of input data changes over time"
+            " - either in the input features, target labels, or both."
+        )
+        st.markdown("")
+        st.markdown("#### Potential Causes in This Project")
+        c1, c2 = st.columns(2)
+        with c1:
+            card(
+                "Color Trends Change — Label Drift",
+                "The distribution of target labels shifts over time. "
+            )
+        with c2:
+            card(
+                "Photo Lighting Change — Training-Serving Skew",
+                "Systematic change in photos."
+            )
+        st.markdown("")
+        st.markdown("#### How Evidently Works")
+        st.markdown(
+            """
+            - Compares a **reference** dataset vs a **current** dataset
+            - Runs statistical tests per feature column (Jensen-Shannon distance for numerical, chi-square for categorical)
+            - Outputs a drift score and a drifted/not-drifted verdict per feature
+            - Generates an **interactive HTML report** with distribution visualizations
+            """
+        )
+        st.markdown("#### Live Drift Report")
+        if DRIFT_REPORT.exists():
+            html_content = DRIFT_REPORT.read_text(encoding="utf-8")
+            components.html(html_content, height=800, scrolling=True)
+        else:
+            warn(f"Drift report not found at <code>{DRIFT_REPORT.name}</code>. Run <code>python -m src.monitoring.drift</code> to generate it.")
+
+# ======================================================
+# TAB 5 — LIVE VALIDATION
+# ======================================================
+with tab5:
     hero(
         "Live Deployment Validation",
         "Proof that backend service and model source are operational."
@@ -666,9 +810,9 @@ with tab4:
     )
 
 # ======================================================
-# TAB 5 — LIVE DEMO
+# TAB 6 — LIVE DEMO
 # ======================================================
-with tab5:
+with tab6:
     st.title("🛍️ Rakuten Color Predictor")
 
     demo_mode = st.selectbox(
