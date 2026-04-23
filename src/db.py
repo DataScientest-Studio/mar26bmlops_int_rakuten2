@@ -21,6 +21,29 @@ import pandas as pd
 
 from src.config import DATABASE_URL, DB_BACKEND
 
+try:
+    import psycopg2
+    import psycopg2.extensions as _psy_ext
+ 
+    def _lax_utf8(value, cur):
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        # psycopg2 normally gives us str already — keep it as-is
+        return value
+ 
+    # OIDs 25 (TEXT), 1043 (VARCHAR), 1042 (BPCHAR/CHAR) — all text-like
+    _LAX_TEXT = _psy_ext.new_type(
+        (25, 1043, 1042),
+        "LAX_TEXT",
+        _lax_utf8,
+    )
+    _psy_ext.register_type(_LAX_TEXT)
+except ImportError:
+    # psycopg2 not installed — SQLite backend, nothing to patch
+    pass
+
 DATABASE_PATH = os.getenv(
     "DATABASE_PATH",
     str(Path(__file__).resolve().parent.parent / "db" / "rakuten_colors.db"),
