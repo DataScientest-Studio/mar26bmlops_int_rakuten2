@@ -2,6 +2,10 @@
 
 ## Grundregel: Alles hoch-/runterfahren
 
+
+
+o. postegres populate
+
 ```bash
 # ALLES starten (inkl. Airflow)
 docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
@@ -415,5 +419,19 @@ client.set_registered_model_alias(
 print(f'Champion alias moved to version {BEST_VERSION}')
 "
 
-# Dann API zum Reload triggern:
+# Dann API zum Reload triggern: or Containter inspec!
 curl -X POST http://localhost:8000/admin/reload
+curl -X POST http://localhost:8000/admin/reload | python3 -m json.tool
+
+# In den API-Container reinschauen — welche Datei hat der MLflow-Client gezogen?
+docker compose exec api ls -la /tmp/ 2>/dev/null | head -20
+
+# Mit Python inspizieren was im RAM ist
+docker compose exec api python -c "
+from src.api.model_service import get_model_service
+svc = get_model_service()
+print('model_source:', svc.model_source)
+print('model_type:', svc.model_type)
+print('num_params:', sum(p.numel() for p in svc._ice_model.parameters()))
+print('first_layer_hash:', hash(str(next(iter(svc._ice_model.parameters())).flatten().cpu().tolist()[:100])))
+"

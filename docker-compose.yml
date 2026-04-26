@@ -104,6 +104,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ./src:/app/src
       - ./data:/app/data
       - ./models:/app/models
       - ./db:/app/db
@@ -199,6 +200,7 @@ services:
     container_name: rakuten_streamlit
     volumes:
       - .:/app
+      - ./data/images:/app/images:ro
     ports:
       - "8501:8501"
     environment:

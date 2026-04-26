@@ -203,9 +203,16 @@ def ingest_products(df_x: pd.DataFrame, df_y: pd.DataFrame | None = None, split:
     return product_ids
 
 
+ 
+ 
 def get_split_data(split: str = "train"):
+    """Load X (features) and y (labels) for a data split.
+    
+    Assumes the products table contains valid UTF-8 — run
+    scripts/clean_bad_bytes.py once if that's not the case.
+    """
     ph = _placeholder()
-
+ 
     with get_conn() as conn:
         df_x = pd.read_sql(
             f"""
@@ -217,11 +224,12 @@ def get_split_data(split: str = "train"):
             conn,
             params=(split,),
         )
-
+ 
         if DB_BACKEND == "postgres":
             df_y = pd.read_sql(
                 f"""
-                SELECT p.id AS product_id, STRING_AGG(l.color_tag, ',') AS color_tags
+                SELECT p.id AS product_id,
+                       STRING_AGG(l.color_tag, ',') AS color_tags
                 FROM products p
                 JOIN labels l ON l.product_id = p.id
                 WHERE p.split = {ph}
@@ -234,7 +242,8 @@ def get_split_data(split: str = "train"):
         else:
             df_y = pd.read_sql(
                 f"""
-                SELECT p.id AS product_id, GROUP_CONCAT(l.color_tag) AS color_tags
+                SELECT p.id AS product_id,
+                       GROUP_CONCAT(l.color_tag) AS color_tags
                 FROM products p
                 JOIN labels l ON l.product_id = p.id
                 WHERE p.split = {ph}
@@ -244,9 +253,8 @@ def get_split_data(split: str = "train"):
                 conn,
                 params=(split,),
             )
-
+ 
     return df_x, df_y
-
 
 def get_products(split: str = "test"):
     ph = _placeholder()

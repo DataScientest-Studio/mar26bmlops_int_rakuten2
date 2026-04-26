@@ -11,13 +11,13 @@ TOTAL_TRAIN = 190_908
 APP_ROOT = "/opt/airflow/app"
 
 RUN_CONFIGS = []
-for i, n_images in enumerate(range(50, 400, 50)):
+for i, n_images in enumerate(range(100_000, 190_908, 10_000)):
     fraction = round(n_images / TOTAL_TRAIN, 6)
     RUN_CONFIGS.append({
         "run_index": i + 1,
         "n_images": n_images,
         "data_fraction": fraction,
-        "epochs": 1,
+        "epochs": 2
     })
 
 default_args = {
@@ -36,6 +36,7 @@ DOCKER_TRAIN_CMD = (
     "-v /home/mirco/rakuten2/models:/app/models "
     "-v /home/mirco/rakuten2/db:/app/db "
     "-v /home/mirco/rakuten2/reports:/app/reports "
+    "-v /home/mirco/rakuten2/src:/app/src "
     # Use host cache directly — no need to populate a named volume
     "-v /home/mirco/.cache/huggingface:/root/.cache/huggingface "
     "-w /app "

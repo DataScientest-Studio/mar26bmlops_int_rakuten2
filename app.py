@@ -694,11 +694,13 @@ with tab4:
 # TAB 5 — LIVE DEMO
 # ======================================================
 with tab5:
-    st.title("🛍️ Rakuten Color Predictor")
+    st.title("Rakuten Color Predictor")
 
     demo_mode = st.selectbox(
         "Select Prediction Mode",
-        ["Single Product Upload", "Bulk Batch Processing (Excel + Images)"]
+        ["Single Product Upload", 
+         "Predict by Product ID (from DB)",
+         "Bulk Batch Processing (Excel + Images)"]
     )
 
     st.divider()
@@ -727,49 +729,212 @@ with tab5:
             else:
                 st.info("Upload an image to see the preview.")
 
-        if st.button("Predict Color", type="primary", use_container_width=True):
-            if not uploaded_file or not item_caption:
-                st.error("Please provide both a description and an image.")
+
+    if st.button("Predict Color", type="primary", use_container_width=True):
+        # Only the text description is required. The image is optional — if
+        # omitted, the API falls back to a neutral gray 224x224 placeholder.
+        if not item_caption or item_caption.strip() == "":
+            st.error("Please enter a product description.")
+        else:
+            # Save image to a shared temp path so the API container can read it,
+            # or use /predict/upload if an image was uploaded, or /predict
+            # (JSON) if no image is present
+            with st.spinner("Analyzing..."):
+                try:
+                    if uploaded_file is not None:
+                        # With image: use upload endpoint
+                        img_bytes = uploaded_file.getvalue()
+                        files = {"image": (uploaded_file.name, img_bytes, uploaded_file.type)}
+                        params = {"item_name": item_name, "item_caption": item_caption}
+                        response = requests.post(
+                            PREDICT_ENDPOINT,    # already /predict/upload
+                            params=params,
+                            files=files,
+                            timeout=30,
+                        )
+                    else:
+                        # No image: use JSON endpoint with image_path left empty
+                        # API handles this gracefully via internal gray placeholder
+                        response = requests.post(
+                            f"{API_URL}/predict",
+                            json={
+                                "item_name": item_name,
+                                "item_caption": item_caption,
+                                "image_path": None,
+                            },
+                            timeout=30,
+                        )
+
+                    if response.status_code == 200:
+                        prediction = response.json()
+                        st.divider()
+                        st.subheader("Prediction Result")
+
+                        res_col_img, res_col_details = st.columns([1, 2])
+
+                        with res_col_img:
+                            if uploaded_file is not None:
+                                st.image(uploaded_file.getvalue(), use_container_width=True)
+                            else:
+                                st.info("No image — text-only prediction")
+
+                        with res_col_details:
+                            st.markdown(f"**Item:** {item_name}")
+                            predicted = prediction.get("predicted_colors", [])
+                            all_scores = prediction.get("all_scores", [])
+
+                            if predicted:
+                                st.markdown("**Detected Colors & Confidence:**")
+                                for score_data in all_scores:
+                                    if score_data['color'] in predicted:
+                                        conf = score_data['score']
+                                        st.write(f"🏷️ **{score_data['color']}**")
+                                        st.progress(conf, text=f"{conf:.2%} confidence")
+                            else:
+                                st.warning("No colors met the confidence threshold.")
+                    else:
+                        st.error(f"API Error ({response.status_code}): {response.text}")
+                except requests.exceptions.ConnectionError:
+                    st.error(f"Could not connect to the API at {API_URL}.")
+                except Exception as e:
+                    st.error(f"An unexpected error occurred: {e}")
+
+
+    # --- MODE 2b: PREDICT BY PRODUCT ID ---
+    elif demo_mode == "Predict by Product ID (from DB)":
+        st.subheader("Predict from Database")
+        st.markdown(
+            "Enter a product ID — the app fetches its stored name, caption and "
+            "image from the DB, displays them, then requests a prediction."
+        )
+
+        col_id, col_btn = st.columns([2, 1])
+
+        with col_id:
+            product_id = st.number_input(
+                "Product ID",
+                min_value=1,
+                value=232,
+                step=1,
+                help="ID from the products table in Postgres",
+            )
+
+        with col_btn:
+            st.markdown("<br>", unsafe_allow_html=True)  # small vertical padding
+            run_lookup = st.button(
+                "Load & Predict",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if run_lookup:
+            # Step 1: fetch product metadata from DB via the API
+            try:
+                prod_resp = requests.get(
+                    f"{API_URL}/products/{int(product_id)}",
+                    timeout=10,
+                )
+            except Exception as e:
+                st.error(f"DB lookup failed: {e}")
+                st.stop()
+
+            if prod_resp.status_code == 404:
+                st.warning(f"Product {product_id} not found in DB.")
+                st.stop()
+            if prod_resp.status_code != 200:
+                st.error(f"DB lookup returned {prod_resp.status_code}: {prod_resp.text}")
+                st.stop()
+
+            product = prod_resp.json()
+
+            # Step 2: display the product info so the user can see what they're
+            # running inference on
+            st.divider()
+            st.subheader(f"Product #{product.get('id')} (split = {product.get('split')})")
+
+            info_col, img_col = st.columns([1, 1])
+
+            with info_col:
+                st.markdown(f"**Item name:** {product.get('item_name') or '_(empty)_'}")
+                st.markdown(
+                    f"**Caption:** {product.get('item_caption') or '_(empty)_'}"
+                )
+                if product.get("color_labels"):
+                    st.markdown(
+                        "**Ground-truth color labels:** "
+                        + ", ".join(product["color_labels"])
+                    )
+                else:
+                    st.markdown("**Ground-truth color labels:** _(none — test split?)_")
+
+            with img_col:
+                img_file = product.get("image_file")
+                if img_file:
+                    image_path_in_container = Path("/app/data/images") / img_file
+                    if image_path_in_container.exists():
+                        st.image(
+                            str(image_path_in_container),
+                            caption=img_file,
+                            use_container_width=True,
+                        )
+                    else:
+                        st.info(f"Image file not accessible: `{img_file}`")
+                else:
+                    st.info("No image associated with this product.")
+
+            # Step 3: run prediction via the dedicated endpoint
+            with st.spinner("Running prediction..."):
+                try:
+                    pred_resp = requests.get(
+                        f"{API_URL}/predict/product/{int(product_id)}",
+                        timeout=30,
+                    )
+                except Exception as e:
+                    st.error(f"Prediction failed: {e}")
+                    st.stop()
+
+            if pred_resp.status_code != 200:
+                st.error(
+                    f"Prediction endpoint returned {pred_resp.status_code}: "
+                    f"{pred_resp.text}"
+                )
+                st.stop()
+
+            prediction = pred_resp.json()
+
+            st.divider()
+            st.subheader("Prediction Result")
+
+            predicted = prediction.get("predicted_colors", [])
+            all_scores = prediction.get("all_scores", [])
+
+            if predicted:
+                st.markdown("**Detected Colors & Confidence:**")
+                for score_data in all_scores:
+                    if score_data["color"] in predicted:
+                        conf = score_data["score"]
+                        st.write(f"🏷️ **{score_data['color']}**")
+                        st.progress(conf, text=f"{conf:.2%} confidence")
+
+                # Ground-truth vs. prediction comparison
+                gt = set(product.get("color_labels") or [])
+                pr = set(predicted)
+                if gt:
+                    tp = gt & pr
+                    fp = pr - gt
+                    fn = gt - pr
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("True Positives", len(tp), help=", ".join(tp) or "—")
+                    c2.metric("False Positives", len(fp), help=", ".join(fp) or "—")
+                    c3.metric("False Negatives", len(fn), help=", ".join(fn) or "—")
             else:
-                img_bytes = uploaded_file.getvalue()
-                files = {"image": (uploaded_file.name, img_bytes, uploaded_file.type)}
-                params = {"item_name": item_name, "item_caption": item_caption}
+                st.warning("No colors met the confidence threshold.")
 
-                with st.spinner("Analyzing image and text features..."):
-                    try:
-                        response = requests.post(PREDICT_ENDPOINT, params=params, files=files, timeout=30)
-                        if response.status_code == 200:
-                            prediction = response.json()
-
-                            st.divider()
-                            st.subheader("Prediction Result")
-
-                            res_col_img, res_col_details = st.columns([1, 2])
-
-                            with res_col_img:
-                                st.image(img_bytes, use_container_width=True)
-
-                            with res_col_details:
-                                st.markdown(f"**Item:** {item_name}")
-
-                                predicted = prediction.get("predicted_colors", [])
-                                all_scores = prediction.get("all_scores", [])
-
-                                if predicted:
-                                    st.markdown("**Detected Colors & Confidence:**")
-                                    for score_data in all_scores:
-                                        if score_data['color'] in predicted:
-                                            conf = score_data['score']
-                                            st.write(f"🏷️ **{score_data['color']}**")
-                                            st.progress(conf, text=f"{conf:.2%} confidence")
-                                else:
-                                    st.warning("No colors met the confidence threshold.")
-                        else:
-                            st.error(f"API Error ({response.status_code}): {response.text}")
-                    except requests.exceptions.ConnectionError:
-                        st.error(f"Could not connect to the API at {API_URL}. Ensure the Docker container is running.")
-                    except Exception as e:
-                        st.error(f"An unexpected error occurred: {e}")
+            st.markdown(
+                f"<div class='small-muted'>Model: <b>{prediction.get('model_type')}</b> · "
+                f"Inference: <b>{prediction.get('inference_ms'):.1f} ms</b></div>",
+                unsafe_allow_html=True,
+            )
 
     # --- MODE 2: BATCH UPLOAD ---
     else:

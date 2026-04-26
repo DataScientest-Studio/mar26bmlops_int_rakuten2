@@ -41,6 +41,14 @@ from src.monitoring.metrics import (
     update_model_metrics_from_mlflow,
 )
 
+# Champion
+from src.config import (
+    COLOR_LABELS,
+    MLFLOW_TRACKING_URI,
+    MLFLOW_REGISTERED_MODEL_NAME,
+    MLFLOW_CHAMPION_ALIAS,    # ← hier hinzufügen wenn fehlt
+)
+
 
 
 app = FastAPI(
@@ -432,17 +440,48 @@ def reload_champion():
     """Reload champion model from MLflow Registry.
 
     Call this after Airflow promotes a new champion so the API picks it up
-    without a container restart. Updates Prometheus model gauges as well.
+    without a container restart. Returns the resolved version + F1 so
+    callers can verify WHICH model is now live.
     """
     service = reload_model_service()
     update_model_metrics_from_mlflow()
     info = service.get_info()
+
+    # Query MLflow for the concrete version + F1 of the champion alias,
+    # so the caller can see the exact model that was loaded.
+    champion_version = None
+    champion_f1 = None
+    source_run_id = None
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
+
+        mv = client.get_model_version_by_alias(
+            MLFLOW_REGISTERED_MODEL_NAME,
+            MLFLOW_CHAMPION_ALIAS,
+        )
+        champion_version = f"v{mv.version}"
+        source_run_id = mv.run_id
+
+        run = client.get_run(source_run_id)
+        champion_f1 = run.data.metrics.get("best_val_f1_micro")
+    except Exception as e:
+        print(f"[reload] could not resolve champion metadata: {e}")
+
     return {
         "status": "reloaded",
         "model_type": info["model_type"],
         "model_source": info["model_source"],
         "is_mock": info["is_mock"],
         "device": info["device"],
+        "champion_version": champion_version,
+        "champion_f1_micro": (
+            round(champion_f1, 4) if champion_f1 is not None else None
+        ),
+        "source_run_id": source_run_id[:8] + "..." if source_run_id else None,
     }
 
 
