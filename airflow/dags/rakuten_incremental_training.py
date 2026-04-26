@@ -17,14 +17,14 @@ for i, n_images in enumerate(range(100_000, 190_908, 10_000)):
         "run_index": i + 1,
         "n_images": n_images,
         "data_fraction": fraction,
-        "epochs": 2
+        "epochs": 4
     })
 
 default_args = {
     "owner": "rakuten-mlops",
     "depends_on_past": False,
-    "retries": 1,
-    "retry_delay": timedelta(minutes=5),
+    "retries": 2,
+    "retry_delay": timedelta(minutes=1),
 }
 
 # Docker command template for GPU training
@@ -52,7 +52,7 @@ DOCKER_TRAIN_CMD = (
     "rakuten2-training "
     "python -m src.models.train_model_final "
     "--data-fraction {fraction} --epochs {epochs} "
-    "--val-fraction 0.05 "
+    # "--val-fraction 0.05 "
     "--skip-champion-compare"
     # 0.05 x 21212 = ~1060 val images — still representative, much faster
 )

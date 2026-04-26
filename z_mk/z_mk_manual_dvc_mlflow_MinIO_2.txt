@@ -348,7 +348,8 @@ OR GPU!!
 
 docker compose --profile training run --rm training \
   python -m src.models.predict_model_final \
-  --split val --model-alias champion
+  --split test --model-alias champion
+                  or -version 113
 
 OR drift report Ver 2:
 docker compose exec api python -m src.models.predict_model_final --split val   --model-alias champion
