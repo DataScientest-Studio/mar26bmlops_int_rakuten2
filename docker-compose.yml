@@ -156,17 +156,16 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: rakuten_streamlit
+    restart: unless-stopped
     volumes:
       - .:/app
     ports:
       - "8501:8501"
     environment:
       - API_URL=http://api:8000
-    command: streamlit run src/streamlit/mlflow.py --server.address 0.0.0.0
+    command: streamlit run src/streamlit/app.py --server.address=0.0.0.0 --server.port=8501
     depends_on:
-      api:
-        condition: service_healthy
-
+      - api
 volumes:
   postgres_data:
   minio_data:

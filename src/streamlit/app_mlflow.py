@@ -13,7 +13,7 @@ MODEL_INFO_ENDPOINT = f"{API_URL}/model/info"
 HEALTH_ENDPOINT = f"{API_URL}/health"
 
 BASE_DIR = Path(__file__).resolve().parent
-ASSET_DIR = BASE_DIR.parent.parent / "mlflow" / "assets"
+ASSET_DIR = BASE_DIR / "assets"
 
 IMG_INTRO = ASSET_DIR / "Intro_tab_MLFLOW.png"
 IMG_DEPLOY = ASSET_DIR / "Training_Deployment.png"
