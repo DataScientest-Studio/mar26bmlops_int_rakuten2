@@ -1,4 +1,4 @@
-import src.streamlit.mlflow as mlflow
+import mlflow
 import mlflow.sklearn
 from src.core.config import settings
 
