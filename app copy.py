@@ -316,14 +316,477 @@ def promotion_flag_card(title: str, score: str, status: str, variant: str = "neu
 st.title("Rakuten MLOps System")
 st.caption("MLflow Tracking, Registry, Model Governance and Production Validation")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["MLflow Workflow", "Why MLflow", "MLflow Lifecycle", "Live Validation", "Live Demo"]
+
+# ============================================================================
+# INTRO HELPERS (from app_intro.py — colleague's section)
+# ============================================================================
+@st.cache_data
+def _intro_load_csv_safe(path_str):
+    p = Path(path_str)
+    if p.exists():
+        try:
+            return pd.read_csv(p)
+        except Exception:
+            return None
+    return None
+
+
+@st.cache_data
+def _intro_load_resized_image(path_str, target_height=220):
+    img = Image.open(path_str).convert("RGB")
+    w, h = img.size
+    new_w = int((target_height / h) * w)
+    return img.resize((new_w, target_height))
+
+
+def _intro_metric_card(label, value):
+    st.markdown(
+        f"""
+        <div style="padding:16px;border-radius:14px;border:1px solid #e6e6e6;background:#fafafa;min-height:90px;">
+            <div style="font-size:14px;color:#666;">{label}</div>
+            <div style="font-size:28px;font-weight:700;color:#111;">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _intro_find_existing_path(candidates):
+    for path in candidates:
+        p = Path(path)
+        if p.exists():
+            return p
+    return None
+
+
+@st.cache_data
+def _intro_compute_basic_stats(df_x, df_y):
+    stats = {}
+    if df_x is not None:
+        stats["train_rows"] = len(df_x)
+        if "item_caption" in df_x.columns:
+            stats["missing_caption"] = int(df_x["item_caption"].isna().sum())
+    if df_y is not None:
+        stats["label_rows"] = len(df_y)
+        if "color_tags" in df_y.columns:
+            stats["top_labels"] = df_y["color_tags"].astype(str).value_counts().head(10)
+    return stats
+
+
+# Resolve dataset / asset paths — looking in several common locations.
+_INTRO_X_TRAIN_PATH = _intro_find_existing_path(["X_train.csv", "data/X_train.csv", "src/streamlit/X_train.csv"])
+_INTRO_X_TEST_PATH = _intro_find_existing_path(["X_test.csv", "data/X_test.csv", "src/streamlit/X_test.csv"])
+_INTRO_Y_TRAIN_PATH = _intro_find_existing_path(["y_train.csv", "data/y_train.csv", "src/streamlit/y_train.csv"])
+
+_INTRO_IMAGE_DIR = _intro_find_existing_path(["images", "data/images", "src/streamlit/images"])
+
+_INTRO_AWS_SCREENSHOT = _intro_find_existing_path([
+    "src/streamlit/assets/AWS_EC2_Screenshot.png",
+    "assets/AWS_EC2_Screenshot.png",
+    "AWS_EC2_Screenshot.png",
+])
+_INTRO_MINIO_DATA_SCREENSHOT = _intro_find_existing_path([
+    "src/streamlit/assets/MINIO_Data.png",
+    "assets/MINIO_Data.png",
+    "MINIO_Data.png",
+])
+_INTRO_MINIO_IMAGES_SCREENSHOT = _intro_find_existing_path([
+    "src/streamlit/assets/MINIO_images.png",
+    "assets/MINIO_images.png",
+    "MINIO_images.png",
+])
+_INTRO_MODEL_DIAGRAM = _intro_find_existing_path([
+    "src/streamlit/assets/model-diagram.png",
+    "assets/model-diagram.png",
+    "model-diagram.png",
+])
+_INTRO_END_TO_END_DIAGRAM = _intro_find_existing_path([
+    "src/streamlit/assets/end_to_end_architecture.png",
+    "assets/end_to_end_architecture.png",
+    "end_to_end_architecture.png",
+])
+_INTRO_PIPELINE_EVOLUTION_DIAGRAM = _intro_find_existing_path([
+    "src/streamlit/assets/pipeline_evolution.png",
+    "assets/pipeline_evolution.png",
+    "pipeline_evolution.png",
+])
+
+_intro_X_train = _intro_load_csv_safe(str(_INTRO_X_TRAIN_PATH)) if _INTRO_X_TRAIN_PATH else None
+_intro_X_test  = _intro_load_csv_safe(str(_INTRO_X_TEST_PATH))  if _INTRO_X_TEST_PATH  else None
+_intro_y_train = _intro_load_csv_safe(str(_INTRO_Y_TRAIN_PATH)) if _INTRO_Y_TRAIN_PATH else None
+_intro_stats   = _intro_compute_basic_stats(_intro_X_train, _intro_y_train)
+
+_intro_train_rows      = _intro_stats.get("train_rows", "-")
+_intro_test_rows       = len(_intro_X_test) if _intro_X_test is not None else "-"
+_intro_label_rows      = _intro_stats.get("label_rows", "-")
+_intro_missing_caption = _intro_stats.get("missing_caption", "-")
+
+_intro_sample_image_names = [
+    "100054_10006497_1.jpg",
+    "100054_10006798_1.jpg",
+    "100054_10006900_1.jpg",
+    "100054_10006905_1.jpg",
+    "100054_10008846_1.jpg",
+]
+
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs(
+    [
+        # --- Intro tabs (Section 1-8 from colleague) ---
+        "1. Project Overview",
+        "2. Business Problem",
+        "3. Dataset & Inputs",
+        "4. Sample Images",
+        "5. Docker Databank on AWS",
+        "6. Model Architecture",
+        "7. ML Pipeline & API",
+        "8. Handover",
+        # --- Your existing tabs ---
+        "9. MLflow Workflow",
+        "10. Why MLflow",
+        "11. MLflow Lifecycle",
+        "12. Live Validation",
+        "13. Live Demo",
+    ]
 )
+
+
+# ============================================================================
+# TAB 1 — PROJECT OVERVIEW
+# ============================================================================
+with tab1:
+    st.header("1. Project Overview")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _intro_metric_card("Training rows", str(_intro_train_rows))
+    with c2:
+        _intro_metric_card("Test rows", str(_intro_test_rows))
+    with c3:
+        _intro_metric_card("Label rows", str(_intro_label_rows))
+    with c4:
+        _intro_metric_card("Missing captions", str(_intro_missing_caption))
+
+    st.markdown("### Objective")
+    st.write(
+        "Build a multimodal AI system that predicts product colour tags from three inputs: "
+        "**product image**, **product title**, and **product description**."
+    )
+
+    st.markdown("### Challenge")
+    st.success(
+        "This is a multi-label classification task. One product can have one or more colours, "
+        "for example: ['Black'] or ['Black', 'White']."
+    )
+
+    st.markdown("### Presentation")
+    st.write(
+        "This project is based on the Rakuten Multimodal Colour Extraction challenge. "
+        "The aim is to extract structured colour information from unstructured e-commerce data. "
+        "To make the solution scalable and shareable, we organized the system using Dockerized services: "
+        "a MinIO data bank on AWS EC2, an ML pipeline container, and an API container."
+    )
+
+
+# ============================================================================
+# TAB 2 — BUSINESS PROBLEM
+# ============================================================================
+with tab2:
+    st.header("2. Business Problem")
+
+    left, right = st.columns([1.2, 1])
+    with left:
+        st.markdown("### Why this matters")
+        st.write(
+            "In e-commerce, product metadata is often incomplete or inconsistent. Sellers may upload an image and title, "
+            "but colour information may be missing, ambiguous, or not standardized."
+        )
+        st.markdown("### Impact")
+        st.write(
+            "Accurate colour tagging improves:\n"
+            "- search and filtering\n"
+            "- product grouping\n"
+            "- recommendation systems\n"
+            "- catalog consistency"
+        )
+    with right:
+        st.info(
+            "**Input:** image + title + description\n\n"
+            "**Task:** predict one or more colour tags\n\n"
+            "**Outcome:** structured metadata for downstream systems"
+        )
+
+    st.markdown("### Presentation")
+    st.write(
+        "From a business point of view, this project converts raw product information into useful metadata. "
+        "This metadata can later be used by platforms for filtering, discovery, recommendation, and catalog cleanup."
+    )
+
+
+# ============================================================================
+# TAB 3 — DATASET & INPUTS
+# ============================================================================
+with tab3:
+    st.header("3. Dataset & Inputs")
+
+    a, b, c = st.columns(3)
+    with a:
+        st.markdown("#### 🖼️ Image")
+        st.write("Visual information about the product appearance, colour, texture, and shape.")
+    with b:
+        st.markdown("#### 📝 Title")
+        st.write("Short product name. Often contains strong colour-related clues.")
+    with c:
+        st.markdown("#### 📄 Description")
+        st.write("Additional text context. Useful when image information is ambiguous.")
+
+    st.markdown("### Training data preview")
+    if _intro_X_train is not None:
+        st.dataframe(_intro_X_train.head(5), use_container_width=True)
+    else:
+        st.warning("X_train.csv not found. Put it in project root, data/, or src/streamlit/.")
+
+    st.markdown("### Label preview")
+    if _intro_y_train is not None:
+        st.dataframe(_intro_y_train.head(5), use_container_width=True)
+    else:
+        st.warning("y_train.csv not found. Put it in project root, data/, or src/streamlit/.")
+
+    _intro_top_labels = _intro_stats.get("top_labels")
+    if _intro_top_labels is not None:
+        st.markdown("### Most frequent label strings")
+        st.bar_chart(_intro_top_labels)
+
+    st.markdown("### Presentation")
+    st.write(
+        "The dataset combines visual and textual information. Images capture appearance, "
+        "while titles and descriptions provide semantic clues. The target is multi-label, meaning the model "
+        "must decide independently which colour tags apply to each product."
+    )
+
+
+# ============================================================================
+# TAB 4 — SAMPLE IMAGES
+# ============================================================================
+with tab4:
+    st.header("4. Sample Product Images")
+    st.write(
+        "These sample product images show why colour extraction can be challenging. "
+        "Some products are metallic, reflective, dark, or visually ambiguous."
+    )
+
+    if _INTRO_IMAGE_DIR:
+        cols = st.columns(5)
+        shown = 0
+        for idx, img_name in enumerate(_intro_sample_image_names):
+            img_path = _INTRO_IMAGE_DIR / img_name
+            if img_path.exists():
+                with cols[idx % 5]:
+                    img = _intro_load_resized_image(str(img_path), target_height=190)
+                    st.image(img, caption=img_name.replace(".jpg", ""))
+                shown += 1
+        if shown == 0:
+            st.warning("Sample image files were not found inside the images folder.")
+    else:
+        st.warning("Images folder not found. Expected one of: images/, data/images/, src/streamlit/images/")
+
+    st.markdown("### Presentation")
+    st.write(
+        "These examples illustrate why image-only classification can be difficult. "
+        "Lighting, shadows, product material, and background can all influence the visual colour. "
+        "That is why we combine image information with text information."
+    )
+
+
+# ============================================================================
+# TAB 5 — DOCKER DATABANK ON AWS
+# ============================================================================
+with tab5:
+    st.header("5. Docker Databank on AWS EC2")
+
+    st.markdown("### What we built")
+    st.write(
+        "We created a Dockerized data bank using **MinIO Object Store** and deployed it on an **AWS EC2 instance**. "
+        "The data bank stores both the CSV files and the product images centrally, so that team members and downstream services can access the same data source."
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### AWS EC2 instance")
+        if _INTRO_AWS_SCREENSHOT:
+            st.image(str(_INTRO_AWS_SCREENSHOT), use_container_width=True)
+        else:
+            st.warning("AWS_EC2_Screenshot.png not found in assets folder.")
+    with c2:
+        st.markdown("#### MinIO data bucket")
+        if _INTRO_MINIO_DATA_SCREENSHOT:
+            st.image(str(_INTRO_MINIO_DATA_SCREENSHOT), use_container_width=True)
+        else:
+            st.warning("MINIO_Data.png not found in assets folder.")
+
+    st.markdown("#### MinIO image bucket")
+    if _INTRO_MINIO_IMAGES_SCREENSHOT:
+        st.image(str(_INTRO_MINIO_IMAGES_SCREENSHOT), use_container_width=True)
+    else:
+        st.warning("MINIO_images.png not found in assets folder.")
+
+    st.markdown("### Presentation")
+    st.write(
+        "Instead of keeping the dataset only on a local machine, we moved the data into a Dockerized MinIO object store. "
+        "This MinIO container is hosted on AWS EC2 and exposed through an Elastic IP. "
+        "This gives the team one shared data bank for CSV files and images, "
+        "which can later be consumed by the ML pipeline and API containers."
+    )
+
+
+# ============================================================================
+# TAB 6 — MODEL ARCHITECTURE
+# ============================================================================
+with tab6:
+    st.header("6. Model Architecture")
+
+    st.markdown("### Multimodal dual-encoder classifier")
+    st.write(
+        "The model is a multimodal dual-encoder classifier built for multilabel colour prediction of product listings. "
+        "It combines text information and visual information into one joint representation before predicting colour tags."
+    )
+
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.markdown("### Architecture diagram")
+        if _INTRO_MODEL_DIAGRAM:
+            st.image(str(_INTRO_MODEL_DIAGRAM), use_container_width=True)
+        else:
+            st.warning("model-diagram.png not found. Place it in src/streamlit/assets/ or assets/.")
+    with c2:
+        st.markdown("### Model details")
+        st.write(
+            "**Text encoder:** Japanese BERT `cl-tohoku/bert-base-japanese-v3` "
+            "processes the product name and description."
+        )
+        st.write(
+            "**Vision encoder:** OpenAI CLIP Vision Transformer `ViT-B/16` processes the product image "
+            "and extracts visual features such as colour, shape, and texture."
+        )
+        st.write(
+            "**Fusion:** The text and image embeddings are concatenated into a single joint representation."
+        )
+        st.write(
+            "**Classifier:** A neural network classifier predicts which colour tags apply to the product."
+        )
+        st.success(
+            "Because both encoders are pretrained, training mainly focuses on fine-tuning the final layers and classifier head."
+        )
+
+    st.markdown("### Presentation")
+    st.write(
+        "The model uses two pretrained encoders. On the text side, Japanese BERT understands product names and descriptions. "
+        "On the image side, CLIP ViT-B/16 extracts visual features from the product image. "
+        "The two embeddings are concatenated and passed through a multilabel classifier to predict the final colour tags."
+    )
+
+
+# ============================================================================
+# TAB 7 — ML PIPELINE & API INTEGRATION
+# ============================================================================
+with tab7:
+    st.header("7. ML Pipeline & API Integration")
+
+    st.markdown("### End-to-end architecture")
+    if _INTRO_END_TO_END_DIAGRAM:
+        st.image(str(_INTRO_END_TO_END_DIAGRAM), use_container_width=True)
+    else:
+        st.code(
+            """
+MinIO Databank on AWS EC2
+        |
+        v
+SQL Databank / PostgreSQL
+        |
+        v
+ML Pipeline Docker
+  - data loading
+  - preprocessing
+  - training / prediction
+  - MLflow logging
+        |
+        v
+API Docker
+  - serves predictions
+  - exposes model to applications
+        |
+        v
+Frontend / Streamlit / Consumer App
+            """,
+            language="text",
+        )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### ML Pipeline Docker")
+        st.write(
+            "Reads images and CSVs from MinIO, structures data into SQL/PostgreSQL, "
+            "preprocesses inputs, trains the model, and logs experiments."
+        )
+    with col2:
+        st.markdown("### API Docker")
+        st.write(
+            "Loads the trained model and exposes prediction endpoints "
+            "so other applications can request colour-tag predictions."
+        )
+
+    st.markdown("### Presentation")
+    st.write(
+        "The architecture is modular. The MinIO data bank stores raw objects such as images and CSV files. "
+        "The SQL layer structures the data for reliable querying. "
+        "The ML pipeline container uses this data for preprocessing, training, and inference. "
+        "Finally, the API container serves the trained model to external applications."
+    )
+
+
+# ============================================================================
+# TAB 8 — HANDOVER TO NEXT SPEAKER
+# ============================================================================
+with tab8:
+    st.header("8. Handover to Next Speaker")
+
+    st.markdown("### Next step in the project")
+    st.write(
+        "So far, we have focused on the data foundation: storing CSV files and images "
+        "in a Dockerized MinIO data bank on AWS EC2."
+    )
+
+    st.markdown("### Pipeline evolution")
+    if _INTRO_PIPELINE_EVOLUTION_DIAGRAM:
+        st.image(str(_INTRO_PIPELINE_EVOLUTION_DIAGRAM), use_container_width=True)
+    else:
+        st.code(
+            """
+MinIO Databank (Images + CSV)
+        |
+        v
+SQL Databank (Structured storage)
+        |
+        v
+ML Pipeline Docker
+        |
+        v
+API Docker (Model Serving)
+            """,
+            language="text",
+        )
+
+    st.markdown("### Transition statement")
+    st.info(
+        "At this point, we hand over to the MLOps part: how the data is transformed into a SQL databank "
+        "and how it is integrated into the ML pipeline, MLflow tracking, model registry, and API layers."
+    )
+
+
 
 # ======================================================
 # TAB 1 — MLFLOW WORKFLOW
 # ======================================================
-with tab1:
+with tab9:
     hero(
         "MLflow in Our End-to-End Workflow",
         "How experiment tracking and model governance fit into our MLOps architecture."
@@ -370,7 +833,7 @@ with tab1:
 # ======================================================
 # TAB 2 — WHY MLFLOW
 # ======================================================
-with tab2:
+with tab10:
     hero(
         "Why We Introduced MLflow",
         "From manual experimentation to professional model lifecycle management."
@@ -424,7 +887,7 @@ with tab2:
 # ======================================================
 # TAB 3 — MLFLOW LIFECYCLE
 # ======================================================
-with tab3:
+with tab11:
     hero(
         "MLflow Lifecycle Inside Our Pipeline",
         "From training to tracking, registry and deployment."
@@ -589,7 +1052,7 @@ with tab3:
 # ======================================================
 # TAB 4 — LIVE VALIDATION
 # ======================================================
-with tab4:
+with tab12:
     hero(
         "Live Deployment Validation",
         "Proof that backend service and model source are operational."
@@ -693,7 +1156,7 @@ with tab4:
 # ======================================================
 # TAB 5 — LIVE DEMO
 # ======================================================
-with tab5:
+with tab13:
     st.title("Rakuten Color Predictor")
 
     demo_mode = st.selectbox(

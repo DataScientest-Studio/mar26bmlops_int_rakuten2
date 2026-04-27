@@ -316,12 +316,39 @@ def promotion_flag_card(title: str, score: str, status: str, variant: str = "neu
 st.title("Rakuten MLOps System")
 st.caption("MLflow Tracking, Registry, Model Governance and Production Validation")
 
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15, tab16, tab17 = st.tabs(
+    [
+        # --- INTRO (8 tabs from colleague's app_intro.py) ---
+        "1. Project Overview",
+        "2. Business Problem",
+        "3. Dataset & Inputs",
+        "4. Sample Images",
+        "5. Docker Databank on AWS",
+        "6. Model Architecture",
+        "7. ML Pipeline & API",
+        "8. Handover",
+        # --- MONITORING (4 tabs from colleague's app_monitoring.py) ---
+        "9. Monitoring Overview",
+        "10. API Metrics",
+        "11. Training Metrics",
+        "12. Data Drift",
+        # --- OWN (your 5 tabs, unchanged content) ---
+        "13. MLflow Workflow",
+        "14. Why MLflow",
+        "15. MLflow Lifecycle",
+        "16. Live Validation",
+        "17. Live Demo",
+    ]
+)
+
 
 # ============================================================================
-# INTRO HELPERS (from app_intro.py — colleague's section)
+# HELPERS for INTRO + MONITORING tabs (shared, prefixed _hub_)
 # ============================================================================
+import streamlit.components.v1 as _hub_components
+
 @st.cache_data
-def _intro_load_csv_safe(path_str):
+def _hub_load_csv_safe(path_str):
     p = Path(path_str)
     if p.exists():
         try:
@@ -332,14 +359,14 @@ def _intro_load_csv_safe(path_str):
 
 
 @st.cache_data
-def _intro_load_resized_image(path_str, target_height=220):
+def _hub_resized_image(path_str, target_height=220):
     img = Image.open(path_str).convert("RGB")
     w, h = img.size
     new_w = int((target_height / h) * w)
     return img.resize((new_w, target_height))
 
 
-def _intro_metric_card(label, value):
+def _hub_metric_card(label, value):
     st.markdown(
         f"""
         <div style="padding:16px;border-radius:14px;border:1px solid #e6e6e6;background:#fafafa;min-height:90px;">
@@ -351,7 +378,7 @@ def _intro_metric_card(label, value):
     )
 
 
-def _intro_find_existing_path(candidates):
+def _hub_find(candidates):
     for path in candidates:
         p = Path(path)
         if p.exists():
@@ -359,69 +386,119 @@ def _intro_find_existing_path(candidates):
     return None
 
 
+def _hub_show_image(path, caption=""):
+    if path and Path(path).exists():
+        st.image(str(path), use_container_width=True, caption=caption)
+    else:
+        name = Path(path).name if path else "(none)"
+        st.info(f"Image not found: {name}")
+
+
+def _hub_card(title, text):
+    st.markdown(
+        f"""
+        <div style="background:white;border:1px solid #E2E8F0;padding:1rem;border-radius:14px;height:100%;">
+            <h4 style="margin-top:0;">{title}</h4>
+            <p style="margin:0.4rem 0 0 0;color:#475569;">{text}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _hub_hero(title, subtitle):
+    st.markdown(
+        f"""
+        <div style="padding:1rem 1.2rem;border-radius:16px;background:linear-gradient(135deg,#F8FAFC 0%,#EEF2FF 100%);border:1px solid #CBD5E1;margin-bottom:1rem;">
+            <h3 style="margin:0;color:#0F172A;font-size:1.4rem;font-weight:800;">{title}</h3>
+            <p style="margin:0.35rem 0 0 0;color:#475569;font-size:0.95rem;">{subtitle}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _hub_metric_header(name, caption, description):
+    st.markdown(
+        f"""
+        <div style="text-align:center;margin-bottom:1rem;">
+            <h3 style="margin:0 0 0.2rem 0;color:#0F172A;font-size:1.15rem;font-weight:700;font-family:monospace;">{name}</h3>
+            <div style="color:#64748B;font-size:0.87rem;margin-bottom:0.5rem;">{caption}</div>
+            <p style="color:#475569;font-size:0.95rem;margin:0;">{description}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ----------------------------------------------------------------------------
+# Asset paths — looking in several common locations.
+# ----------------------------------------------------------------------------
+_HUB_X_TRAIN = _hub_find(["X_train.csv", "data/raw/X_train.csv", "src/streamlit/X_train.csv"])
+_HUB_X_TEST = _hub_find(["X_test.csv", "data/raw/X_test.csv", "src/streamlit/X_test.csv"])
+_HUB_Y_TRAIN = _hub_find(["y_train.csv", "data/raw/y_train.csv", "src/streamlit/y_train.csv"])
+
+_HUB_IMAGE_DIR = _hub_find([
+    "src/streamlit/images", "images", "data/images",
+])
+
+# Intro figures
+_HUB_AWS_SCREENSHOT = _hub_find([
+    "src/streamlit/assets/AWS_EC2_Screenshot.png", "assets/AWS_EC2_Screenshot.png", "AWS_EC2_Screenshot.png",
+])
+_HUB_MINIO_DATA = _hub_find([
+    "src/streamlit/assets/MINIO_Data.png", "assets/MINIO_Data.png", "MINIO_Data.png",
+])
+_HUB_MINIO_IMAGES = _hub_find([
+    "src/streamlit/assets/MINIO_images.png", "assets/MINIO_images.png", "MINIO_images.png",
+])
+_HUB_MODEL_DIAGRAM = _hub_find([
+    "src/streamlit/assets/model-diagram.png", "assets/model-diagram.png", "model-diagram.png",
+])
+_HUB_END_TO_END = _hub_find([
+    "src/streamlit/assets/end_to_end_architecture.png", "assets/end_to_end_architecture.png", "end_to_end_architecture.png",
+])
+_HUB_PIPELINE_EVO = _hub_find([
+    "src/streamlit/assets/pipeline_evolution.png", "assets/pipeline_evolution.png", "pipeline_evolution.png",
+])
+
+# Monitoring figures (in reports/figures by colleague's convention)
+_HUB_FIG_DIR = _hub_find(["reports/figures", "src/streamlit/reports/figures"])
+
+def _hub_fig(name):
+    if _HUB_FIG_DIR is None:
+        return None
+    p = Path(_HUB_FIG_DIR) / name
+    return p if p.exists() else None
+
+_HUB_DRIFT_REPORT = _hub_find([
+    "reports/data_drift_report.html", "data_drift_report.html",
+])
+
 @st.cache_data
-def _intro_compute_basic_stats(df_x, df_y):
-    stats = {}
+def _hub_basic_stats(df_x, df_y):
+    s = {}
     if df_x is not None:
-        stats["train_rows"] = len(df_x)
+        s["train_rows"] = len(df_x)
         if "item_caption" in df_x.columns:
-            stats["missing_caption"] = int(df_x["item_caption"].isna().sum())
+            s["missing_caption"] = int(df_x["item_caption"].isna().sum())
     if df_y is not None:
-        stats["label_rows"] = len(df_y)
+        s["label_rows"] = len(df_y)
         if "color_tags" in df_y.columns:
-            stats["top_labels"] = df_y["color_tags"].astype(str).value_counts().head(10)
-    return stats
+            s["top_labels"] = df_y["color_tags"].astype(str).value_counts().head(10)
+    return s
 
+_hub_X_train = _hub_load_csv_safe(str(_HUB_X_TRAIN)) if _HUB_X_TRAIN else None
+_hub_X_test = _hub_load_csv_safe(str(_HUB_X_TEST)) if _HUB_X_TEST else None
+_hub_y_train = _hub_load_csv_safe(str(_HUB_Y_TRAIN)) if _HUB_Y_TRAIN else None
+_hub_stats = _hub_basic_stats(_hub_X_train, _hub_y_train)
 
-# Resolve dataset / asset paths — looking in several common locations.
-_INTRO_X_TRAIN_PATH = _intro_find_existing_path(["X_train.csv", "data/X_train.csv", "src/streamlit/X_train.csv"])
-_INTRO_X_TEST_PATH = _intro_find_existing_path(["X_test.csv", "data/X_test.csv", "src/streamlit/X_test.csv"])
-_INTRO_Y_TRAIN_PATH = _intro_find_existing_path(["y_train.csv", "data/y_train.csv", "src/streamlit/y_train.csv"])
+_hub_train_rows = _hub_stats.get("train_rows", "-")
+_hub_test_rows = len(_hub_X_test) if _hub_X_test is not None else "-"
+_hub_label_rows = _hub_stats.get("label_rows", "-")
+_hub_missing_caption = _hub_stats.get("missing_caption", "-")
 
-_INTRO_IMAGE_DIR = _intro_find_existing_path(["images", "data/images", "src/streamlit/images"])
-
-_INTRO_AWS_SCREENSHOT = _intro_find_existing_path([
-    "src/streamlit/assets/AWS_EC2_Screenshot.png",
-    "assets/AWS_EC2_Screenshot.png",
-    "AWS_EC2_Screenshot.png",
-])
-_INTRO_MINIO_DATA_SCREENSHOT = _intro_find_existing_path([
-    "src/streamlit/assets/MINIO_Data.png",
-    "assets/MINIO_Data.png",
-    "MINIO_Data.png",
-])
-_INTRO_MINIO_IMAGES_SCREENSHOT = _intro_find_existing_path([
-    "src/streamlit/assets/MINIO_images.png",
-    "assets/MINIO_images.png",
-    "MINIO_images.png",
-])
-_INTRO_MODEL_DIAGRAM = _intro_find_existing_path([
-    "src/streamlit/assets/model-diagram.png",
-    "assets/model-diagram.png",
-    "model-diagram.png",
-])
-_INTRO_END_TO_END_DIAGRAM = _intro_find_existing_path([
-    "src/streamlit/assets/end_to_end_architecture.png",
-    "assets/end_to_end_architecture.png",
-    "end_to_end_architecture.png",
-])
-_INTRO_PIPELINE_EVOLUTION_DIAGRAM = _intro_find_existing_path([
-    "src/streamlit/assets/pipeline_evolution.png",
-    "assets/pipeline_evolution.png",
-    "pipeline_evolution.png",
-])
-
-_intro_X_train = _intro_load_csv_safe(str(_INTRO_X_TRAIN_PATH)) if _INTRO_X_TRAIN_PATH else None
-_intro_X_test  = _intro_load_csv_safe(str(_INTRO_X_TEST_PATH))  if _INTRO_X_TEST_PATH  else None
-_intro_y_train = _intro_load_csv_safe(str(_INTRO_Y_TRAIN_PATH)) if _INTRO_Y_TRAIN_PATH else None
-_intro_stats   = _intro_compute_basic_stats(_intro_X_train, _intro_y_train)
-
-_intro_train_rows      = _intro_stats.get("train_rows", "-")
-_intro_test_rows       = len(_intro_X_test) if _intro_X_test is not None else "-"
-_intro_label_rows      = _intro_stats.get("label_rows", "-")
-_intro_missing_caption = _intro_stats.get("missing_caption", "-")
-
-_intro_sample_image_names = [
+_hub_sample_images = [
     "100054_10006497_1.jpg",
     "100054_10006798_1.jpg",
     "100054_10006900_1.jpg",
@@ -429,61 +506,32 @@ _intro_sample_image_names = [
     "100054_10008846_1.jpg",
 ]
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs(
-    [
-        # --- Intro tabs (Section 1-8 from colleague) ---
-        "1. Project Overview",
-        "2. Business Problem",
-        "3. Dataset & Inputs",
-        "4. Sample Images",
-        "5. Docker Databank on AWS",
-        "6. Model Architecture",
-        "7. ML Pipeline & API",
-        "8. Handover",
-        # --- Your existing tabs ---
-        "9. MLflow Workflow",
-        "10. Why MLflow",
-        "11. MLflow Lifecycle",
-        "12. Live Validation",
-        "13. Live Demo",
-    ]
-)
-
-
 # ============================================================================
 # TAB 1 — PROJECT OVERVIEW
 # ============================================================================
 with tab1:
     st.header("1. Project Overview")
-
     c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        _intro_metric_card("Training rows", str(_intro_train_rows))
-    with c2:
-        _intro_metric_card("Test rows", str(_intro_test_rows))
-    with c3:
-        _intro_metric_card("Label rows", str(_intro_label_rows))
-    with c4:
-        _intro_metric_card("Missing captions", str(_intro_missing_caption))
-
+    with c1: _hub_metric_card("Training rows", str(_hub_train_rows))
+    with c2: _hub_metric_card("Test rows", str(_hub_test_rows))
+    with c3: _hub_metric_card("Label rows", str(_hub_label_rows))
+    with c4: _hub_metric_card("Missing captions", str(_hub_missing_caption))
     st.markdown("### Objective")
     st.write(
         "Build a multimodal AI system that predicts product colour tags from three inputs: "
         "**product image**, **product title**, and **product description**."
     )
-
     st.markdown("### Challenge")
     st.success(
         "This is a multi-label classification task. One product can have one or more colours, "
         "for example: ['Black'] or ['Black', 'White']."
     )
-
     st.markdown("### Presentation")
     st.write(
         "This project is based on the Rakuten Multimodal Colour Extraction challenge. "
         "The aim is to extract structured colour information from unstructured e-commerce data. "
-        "To make the solution scalable and shareable, we organized the system using Dockerized services: "
-        "a MinIO data bank on AWS EC2, an ML pipeline container, and an API container."
+        "We organize the system using Dockerized services: a MinIO data bank on AWS EC2, "
+        "an ML pipeline container, and an API container."
     )
 
 
@@ -492,13 +540,13 @@ with tab1:
 # ============================================================================
 with tab2:
     st.header("2. Business Problem")
-
     left, right = st.columns([1.2, 1])
     with left:
         st.markdown("### Why this matters")
         st.write(
-            "In e-commerce, product metadata is often incomplete or inconsistent. Sellers may upload an image and title, "
-            "but colour information may be missing, ambiguous, or not standardized."
+            "In e-commerce, product metadata is often incomplete or inconsistent. "
+            "Sellers may upload an image and title, but colour information may be missing, "
+            "ambiguous, or not standardized."
         )
         st.markdown("### Impact")
         st.write(
@@ -514,7 +562,6 @@ with tab2:
             "**Task:** predict one or more colour tags\n\n"
             "**Outcome:** structured metadata for downstream systems"
         )
-
     st.markdown("### Presentation")
     st.write(
         "From a business point of view, this project converts raw product information into useful metadata. "
@@ -527,7 +574,6 @@ with tab2:
 # ============================================================================
 with tab3:
     st.header("3. Dataset & Inputs")
-
     a, b, c = st.columns(3)
     with a:
         st.markdown("#### 🖼️ Image")
@@ -540,21 +586,21 @@ with tab3:
         st.write("Additional text context. Useful when image information is ambiguous.")
 
     st.markdown("### Training data preview")
-    if _intro_X_train is not None:
-        st.dataframe(_intro_X_train.head(5), use_container_width=True)
+    if _hub_X_train is not None:
+        st.dataframe(_hub_X_train.head(5), use_container_width=True)
     else:
         st.warning("X_train.csv not found. Put it in project root, data/, or src/streamlit/.")
 
     st.markdown("### Label preview")
-    if _intro_y_train is not None:
-        st.dataframe(_intro_y_train.head(5), use_container_width=True)
+    if _hub_y_train is not None:
+        st.dataframe(_hub_y_train.head(5), use_container_width=True)
     else:
         st.warning("y_train.csv not found. Put it in project root, data/, or src/streamlit/.")
 
-    _intro_top_labels = _intro_stats.get("top_labels")
-    if _intro_top_labels is not None:
+    _hub_top_labels = _hub_stats.get("top_labels")
+    if _hub_top_labels is not None:
         st.markdown("### Most frequent label strings")
-        st.bar_chart(_intro_top_labels)
+        st.bar_chart(_hub_top_labels)
 
     st.markdown("### Presentation")
     st.write(
@@ -574,20 +620,20 @@ with tab4:
         "Some products are metallic, reflective, dark, or visually ambiguous."
     )
 
-    if _INTRO_IMAGE_DIR:
+    if _HUB_IMAGE_DIR:
         cols = st.columns(5)
         shown = 0
-        for idx, img_name in enumerate(_intro_sample_image_names):
-            img_path = _INTRO_IMAGE_DIR / img_name
+        for idx, img_name in enumerate(_hub_sample_images):
+            img_path = Path(_HUB_IMAGE_DIR) / img_name
             if img_path.exists():
                 with cols[idx % 5]:
-                    img = _intro_load_resized_image(str(img_path), target_height=190)
+                    img = _hub_resized_image(str(img_path), target_height=190)
                     st.image(img, caption=img_name.replace(".jpg", ""))
                 shown += 1
         if shown == 0:
             st.warning("Sample image files were not found inside the images folder.")
     else:
-        st.warning("Images folder not found. Expected one of: images/, data/images/, src/streamlit/images/")
+        st.warning("Images folder not found. Expected one of: src/streamlit/images/, images/, data/images/")
 
     st.markdown("### Presentation")
     st.write(
@@ -602,33 +648,21 @@ with tab4:
 # ============================================================================
 with tab5:
     st.header("5. Docker Databank on AWS EC2")
-
     st.markdown("### What we built")
     st.write(
         "We created a Dockerized data bank using **MinIO Object Store** and deployed it on an **AWS EC2 instance**. "
-        "The data bank stores both the CSV files and the product images centrally, so that team members and downstream services can access the same data source."
+        "The data bank stores both the CSV files and the product images centrally, "
+        "so that team members and downstream services can access the same data source."
     )
-
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("#### AWS EC2 instance")
-        if _INTRO_AWS_SCREENSHOT:
-            st.image(str(_INTRO_AWS_SCREENSHOT), use_container_width=True)
-        else:
-            st.warning("AWS_EC2_Screenshot.png not found in assets folder.")
+        _hub_show_image(_HUB_AWS_SCREENSHOT)
     with c2:
         st.markdown("#### MinIO data bucket")
-        if _INTRO_MINIO_DATA_SCREENSHOT:
-            st.image(str(_INTRO_MINIO_DATA_SCREENSHOT), use_container_width=True)
-        else:
-            st.warning("MINIO_Data.png not found in assets folder.")
-
+        _hub_show_image(_HUB_MINIO_DATA)
     st.markdown("#### MinIO image bucket")
-    if _INTRO_MINIO_IMAGES_SCREENSHOT:
-        st.image(str(_INTRO_MINIO_IMAGES_SCREENSHOT), use_container_width=True)
-    else:
-        st.warning("MINIO_images.png not found in assets folder.")
-
+    _hub_show_image(_HUB_MINIO_IMAGES)
     st.markdown("### Presentation")
     st.write(
         "Instead of keeping the dataset only on a local machine, we moved the data into a Dockerized MinIO object store. "
@@ -643,40 +677,22 @@ with tab5:
 # ============================================================================
 with tab6:
     st.header("6. Model Architecture")
-
     st.markdown("### Multimodal dual-encoder classifier")
     st.write(
         "The model is a multimodal dual-encoder classifier built for multilabel colour prediction of product listings. "
         "It combines text information and visual information into one joint representation before predicting colour tags."
     )
-
     c1, c2 = st.columns([1, 1])
     with c1:
         st.markdown("### Architecture diagram")
-        if _INTRO_MODEL_DIAGRAM:
-            st.image(str(_INTRO_MODEL_DIAGRAM), use_container_width=True)
-        else:
-            st.warning("model-diagram.png not found. Place it in src/streamlit/assets/ or assets/.")
+        _hub_show_image(_HUB_MODEL_DIAGRAM)
     with c2:
         st.markdown("### Model details")
-        st.write(
-            "**Text encoder:** Japanese BERT `cl-tohoku/bert-base-japanese-v3` "
-            "processes the product name and description."
-        )
-        st.write(
-            "**Vision encoder:** OpenAI CLIP Vision Transformer `ViT-B/16` processes the product image "
-            "and extracts visual features such as colour, shape, and texture."
-        )
-        st.write(
-            "**Fusion:** The text and image embeddings are concatenated into a single joint representation."
-        )
-        st.write(
-            "**Classifier:** A neural network classifier predicts which colour tags apply to the product."
-        )
-        st.success(
-            "Because both encoders are pretrained, training mainly focuses on fine-tuning the final layers and classifier head."
-        )
-
+        st.write("**Text encoder:** Japanese BERT `cl-tohoku/bert-base-japanese-v3` processes the product name and description.")
+        st.write("**Vision encoder:** OpenAI CLIP Vision Transformer `ViT-B/16` processes the product image and extracts visual features.")
+        st.write("**Fusion:** The text and image embeddings are concatenated into a single joint representation.")
+        st.write("**Classifier:** A neural network classifier predicts which colour tags apply to the product.")
+        st.success("Because both encoders are pretrained, training mainly focuses on fine-tuning the final layers and classifier head.")
     st.markdown("### Presentation")
     st.write(
         "The model uses two pretrained encoders. On the text side, Japanese BERT understands product names and descriptions. "
@@ -686,37 +702,16 @@ with tab6:
 
 
 # ============================================================================
-# TAB 7 — ML PIPELINE & API INTEGRATION
+# TAB 7 — ML PIPELINE & API
 # ============================================================================
 with tab7:
     st.header("7. ML Pipeline & API Integration")
-
     st.markdown("### End-to-end architecture")
-    if _INTRO_END_TO_END_DIAGRAM:
-        st.image(str(_INTRO_END_TO_END_DIAGRAM), use_container_width=True)
+    if _HUB_END_TO_END:
+        _hub_show_image(_HUB_END_TO_END)
     else:
         st.code(
-            """
-MinIO Databank on AWS EC2
-        |
-        v
-SQL Databank / PostgreSQL
-        |
-        v
-ML Pipeline Docker
-  - data loading
-  - preprocessing
-  - training / prediction
-  - MLflow logging
-        |
-        v
-API Docker
-  - serves predictions
-  - exposes model to applications
-        |
-        v
-Frontend / Streamlit / Consumer App
-            """,
+            "MinIO Databank on AWS EC2\n        |\n        v\nSQL/PostgreSQL\n        |\n        v\nML Pipeline Docker\n        |\n        v\nAPI Docker\n        |\n        v\nFrontend / Streamlit",
             language="text",
         )
 
@@ -744,37 +739,23 @@ Frontend / Streamlit / Consumer App
 
 
 # ============================================================================
-# TAB 8 — HANDOVER TO NEXT SPEAKER
+# TAB 8 — HANDOVER
 # ============================================================================
 with tab8:
     st.header("8. Handover to Next Speaker")
-
     st.markdown("### Next step in the project")
     st.write(
         "So far, we have focused on the data foundation: storing CSV files and images "
         "in a Dockerized MinIO data bank on AWS EC2."
     )
-
     st.markdown("### Pipeline evolution")
-    if _INTRO_PIPELINE_EVOLUTION_DIAGRAM:
-        st.image(str(_INTRO_PIPELINE_EVOLUTION_DIAGRAM), use_container_width=True)
+    if _HUB_PIPELINE_EVO:
+        _hub_show_image(_HUB_PIPELINE_EVO)
     else:
         st.code(
-            """
-MinIO Databank (Images + CSV)
-        |
-        v
-SQL Databank (Structured storage)
-        |
-        v
-ML Pipeline Docker
-        |
-        v
-API Docker (Model Serving)
-            """,
+            "MinIO Databank → SQL Databank → ML Pipeline Docker → API Docker (Model Serving)",
             language="text",
         )
-
     st.markdown("### Transition statement")
     st.info(
         "At this point, we hand over to the MLOps part: how the data is transformed into a SQL databank "
@@ -782,11 +763,158 @@ API Docker (Model Serving)
     )
 
 
+# ============================================================================
+# TAB 9 — MONITORING OVERVIEW
+# ============================================================================
+with tab9:
+    _hub_hero("Monitoring", "Real-time API observability and training pipeline metrics via Prometheus and Grafana.")
+    st.markdown("### Two Metric Flows")
+    c1, c2 = st.columns(2)
+    with c1:
+        _hub_card(
+            "API Metrics",
+            "Emitted continuously by the running API. Every prediction and HTTP request is tracked "
+            "in real time via Prometheus."
+        )
+    with c2:
+        _hub_card(
+            "Training Metrics",
+            "Pushed once at the end of each Airflow pipeline run via Pushgateway. Prometheus scrapes the gateway."
+        )
+    st.markdown("")
+    _, img_col, _ = st.columns([1, 2, 1])
+    with img_col:
+        _hub_show_image(_hub_fig("Monitoring-overview.png"))
+    st.markdown(
+        "<div style='text-align:center; color:#475569; font-size:0.95rem;'>"
+        "<b>Both flows end up in Grafana</b>, provisioned automatically — no manual dashboard configuration needed.</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================================
+# TAB 10 — API METRICS
+# ============================================================================
+with tab10:
+    _hub_hero("API Metrics", "Continuous observability of the live API.")
+    api_page = st.radio(
+        "api_page",
+        ["Flow Diagram", "Color Predictions", "Request Count", "Request Duration"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="hub_api_page",
+    )
+    st.divider()
+
+    if api_page == "Flow Diagram":
+        _, img_col, _ = st.columns([1, 1, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("API-metrics-flow.png"))
+    elif api_page == "Color Predictions":
+        _hub_metric_header("rakuten_color_predictions_total", "Counter — labeled by color", "Incremented every time a color is predicted.")
+        _, img_col, _ = st.columns([1, 6, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_color_predictions_total.png"))
+    elif api_page == "Request Count":
+        _hub_metric_header("rakuten_requests_total", "Counter — labeled by method, endpoint, status_code", "Tracks every HTTP request.")
+        _, img_col, _ = st.columns([1, 6, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_requests_total.png"))
+    elif api_page == "Request Duration":
+        _hub_metric_header("rakuten_request_duration_seconds", "Histogram — labeled by method, endpoint", "Records request duration in seconds.")
+        _, img_col, _ = st.columns([1, 6, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_request_duration_seconds.png"))
+
+
+# ============================================================================
+# TAB 11 — TRAINING METRICS
+# ============================================================================
+with tab11:
+    _hub_hero("Training Metrics", "Pushed at the end of each pipeline run.")
+    train_page = st.radio(
+        "train_page",
+        ["Flow Diagram", "Training Run F1", "Training Duration", "Champion F1", "Champion Version"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="hub_train_page",
+    )
+    st.divider()
+
+    if train_page == "Flow Diagram":
+        _, img_col, _ = st.columns([1.5, 1, 1.5])
+        with img_col:
+            _hub_show_image(_hub_fig("Training-metrics-flow.png"))
+    elif train_page == "Training Run F1":
+        _hub_metric_header("rakuten_training_run_f1", "Labeled by model_version and run_id", "F1 score per training run.")
+        _, img_col, _ = st.columns([1, 14, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_training_run_f1.png"))
+    elif train_page == "Training Duration":
+        _hub_metric_header("rakuten_training_duration_seconds", "Labeled by model_version", "Training time per run.")
+        _, img_col, _ = st.columns([1, 4, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_training_duration_seconds.png"))
+    elif train_page == "Champion F1":
+        _hub_metric_header("rakuten_champion_f1", "Single value", "F1 score of the currently promoted champion model.")
+        _, img_col, _ = st.columns([1, 2, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_champion_f1.png"))
+    elif train_page == "Champion Version":
+        _hub_metric_header("rakuten_champion_version", "Single value", "Version number of the champion.")
+        _, img_col, _ = st.columns([1, 2, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_champion_version.png"))
+
+
+# ============================================================================
+# TAB 12 — DATA DRIFT
+# ============================================================================
+with tab12:
+    _hub_hero("Data Drift", "Detected with Evidently — comparing reference vs current distributions.")
+    st.markdown("### Data Drift with Evidently")
+    st.info(
+        "Data drift occurs when the statistical distribution of input data changes over time "
+        "- either in the input features, target labels, or both."
+    )
+    st.markdown("")
+    st.markdown("#### Potential Causes in This Project")
+    c1, c2 = st.columns(2)
+    with c1:
+        _hub_card(
+            "Color Trends Change — Label Drift",
+            "The distribution of target labels shifts over time."
+        )
+    with c2:
+        _hub_card(
+            "Photo Lighting Change — Training-Serving Skew",
+            "Systematic change in product photographs."
+        )
+    st.markdown("")
+    st.markdown("#### How Evidently Works")
+    st.markdown(
+        """
+        - Compares a **reference** dataset vs a **current** dataset
+        - Runs statistical tests per feature column (Jensen-Shannon distance for numerical, chi-square for categorical)
+        - Outputs a drift score and a drifted/not-drifted verdict per feature
+        - Generates an **interactive HTML report** with distribution visualizations
+
+        In a real production setup, this comparison would run periodically. If drift is detected, it triggers retraining via the Airflow pipeline.
+        """
+    )
+    st.markdown("#### Live Drift Report")
+    if _HUB_DRIFT_REPORT and Path(_HUB_DRIFT_REPORT).exists():
+        html_content = Path(_HUB_DRIFT_REPORT).read_text(encoding="utf-8")
+        _hub_components.html(html_content, height=800, scrolling=True)
+    else:
+        st.warning("Drift report not found at reports/data_drift_report.html. Run `python -m src.monitoring.drift` to generate it.")
+
+
 
 # ======================================================
 # TAB 1 — MLFLOW WORKFLOW
 # ======================================================
-with tab9:
+with tab13:
     hero(
         "MLflow in Our End-to-End Workflow",
         "How experiment tracking and model governance fit into our MLOps architecture."
@@ -833,7 +961,7 @@ with tab9:
 # ======================================================
 # TAB 2 — WHY MLFLOW
 # ======================================================
-with tab10:
+with tab14:
     hero(
         "Why We Introduced MLflow",
         "From manual experimentation to professional model lifecycle management."
@@ -887,7 +1015,7 @@ with tab10:
 # ======================================================
 # TAB 3 — MLFLOW LIFECYCLE
 # ======================================================
-with tab11:
+with tab15:
     hero(
         "MLflow Lifecycle Inside Our Pipeline",
         "From training to tracking, registry and deployment."
@@ -1052,7 +1180,7 @@ with tab11:
 # ======================================================
 # TAB 4 — LIVE VALIDATION
 # ======================================================
-with tab12:
+with tab16:
     hero(
         "Live Deployment Validation",
         "Proof that backend service and model source are operational."
@@ -1156,7 +1284,7 @@ with tab12:
 # ======================================================
 # TAB 5 — LIVE DEMO
 # ======================================================
-with tab13:
+with tab17:
     st.title("Rakuten Color Predictor")
 
     demo_mode = st.selectbox(
@@ -1193,74 +1321,74 @@ with tab13:
                 st.info("Upload an image to see the preview.")
 
 
-    if st.button("Predict Color", type="primary", use_container_width=True):
-        # Only the text description is required. The image is optional — if
-        # omitted, the API falls back to a neutral gray 224x224 placeholder.
-        if not item_caption or item_caption.strip() == "":
-            st.error("Please enter a product description.")
-        else:
-            # Save image to a shared temp path so the API container can read it,
-            # or use /predict/upload if an image was uploaded, or /predict
-            # (JSON) if no image is present
-            with st.spinner("Analyzing..."):
-                try:
-                    if uploaded_file is not None:
-                        # With image: use upload endpoint
-                        img_bytes = uploaded_file.getvalue()
-                        files = {"image": (uploaded_file.name, img_bytes, uploaded_file.type)}
-                        params = {"item_name": item_name, "item_caption": item_caption}
-                        response = requests.post(
-                            PREDICT_ENDPOINT,    # already /predict/upload
-                            params=params,
-                            files=files,
-                            timeout=30,
-                        )
-                    else:
-                        # No image: use JSON endpoint with image_path left empty
-                        # API handles this gracefully via internal gray placeholder
-                        response = requests.post(
-                            f"{API_URL}/predict",
-                            json={
-                                "item_name": item_name,
-                                "item_caption": item_caption,
-                                "image_path": None,
-                            },
-                            timeout=30,
-                        )
+        if st.button("Predict Color", type="primary", use_container_width=True):
+            # Only the text description is required. The image is optional — if
+            # omitted, the API falls back to a neutral gray 224x224 placeholder.
+            if not item_caption or item_caption.strip() == "":
+                st.error("Please enter a product description.")
+            else:
+                # Save image to a shared temp path so the API container can read it,
+                # or use /predict/upload if an image was uploaded, or /predict
+                # (JSON) if no image is present
+                with st.spinner("Analyzing..."):
+                    try:
+                        if uploaded_file is not None:
+                            # With image: use upload endpoint
+                            img_bytes = uploaded_file.getvalue()
+                            files = {"image": (uploaded_file.name, img_bytes, uploaded_file.type)}
+                            params = {"item_name": item_name, "item_caption": item_caption}
+                            response = requests.post(
+                                PREDICT_ENDPOINT,    # already /predict/upload
+                                params=params,
+                                files=files,
+                                timeout=30,
+                            )
+                        else:
+                            # No image: use JSON endpoint with image_path left empty
+                            # API handles this gracefully via internal gray placeholder
+                            response = requests.post(
+                                f"{API_URL}/predict",
+                                json={
+                                    "item_name": item_name,
+                                    "item_caption": item_caption,
+                                    "image_path": None,
+                                },
+                                timeout=30,
+                            )
 
-                    if response.status_code == 200:
-                        prediction = response.json()
-                        st.divider()
-                        st.subheader("Prediction Result")
+                        if response.status_code == 200:
+                            prediction = response.json()
+                            st.divider()
+                            st.subheader("Prediction Result")
 
-                        res_col_img, res_col_details = st.columns([1, 2])
+                            res_col_img, res_col_details = st.columns([1, 2])
 
-                        with res_col_img:
-                            if uploaded_file is not None:
-                                st.image(uploaded_file.getvalue(), use_container_width=True)
-                            else:
-                                st.info("No image — text-only prediction")
+                            with res_col_img:
+                                if uploaded_file is not None:
+                                    st.image(uploaded_file.getvalue(), use_container_width=True)
+                                else:
+                                    st.info("No image — text-only prediction")
 
-                        with res_col_details:
-                            st.markdown(f"**Item:** {item_name}")
-                            predicted = prediction.get("predicted_colors", [])
-                            all_scores = prediction.get("all_scores", [])
+                            with res_col_details:
+                                st.markdown(f"**Item:** {item_name}")
+                                predicted = prediction.get("predicted_colors", [])
+                                all_scores = prediction.get("all_scores", [])
 
-                            if predicted:
-                                st.markdown("**Detected Colors & Confidence:**")
-                                for score_data in all_scores:
-                                    if score_data['color'] in predicted:
-                                        conf = score_data['score']
-                                        st.write(f"🏷️ **{score_data['color']}**")
-                                        st.progress(conf, text=f"{conf:.2%} confidence")
-                            else:
-                                st.warning("No colors met the confidence threshold.")
-                    else:
-                        st.error(f"API Error ({response.status_code}): {response.text}")
-                except requests.exceptions.ConnectionError:
-                    st.error(f"Could not connect to the API at {API_URL}.")
-                except Exception as e:
-                    st.error(f"An unexpected error occurred: {e}")
+                                if predicted:
+                                    st.markdown("**Detected Colors & Confidence:**")
+                                    for score_data in all_scores:
+                                        if score_data['color'] in predicted:
+                                            conf = score_data['score']
+                                            st.write(f"🏷️ **{score_data['color']}**")
+                                            st.progress(conf, text=f"{conf:.2%} confidence")
+                                else:
+                                    st.warning("No colors met the confidence threshold.")
+                        else:
+                            st.error(f"API Error ({response.status_code}): {response.text}")
+                    except requests.exceptions.ConnectionError:
+                        st.error(f"Could not connect to the API at {API_URL}.")
+                    except Exception as e:
+                        st.error(f"An unexpected error occurred: {e}")
 
 
     # --- MODE 2b: PREDICT BY PRODUCT ID ---
