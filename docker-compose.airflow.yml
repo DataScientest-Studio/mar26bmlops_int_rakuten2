@@ -15,6 +15,13 @@
 # Task functions add /opt/airflow/app to sys.path explicitly when needed.
 
 services:
+  pushgateway:
+    image: prom/pushgateway:latest
+    container_name: rakuten_pushgateway
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+
   airflow-init:
     image: apache/airflow:2.10.4-python3.11
     container_name: rakuten_airflow_init
@@ -35,6 +42,17 @@ services:
     command:
       - -c
       - |
+        python -c "
+        import psycopg2
+        conn = psycopg2.connect('postgresql://postgres:postgres@postgres:5432/postgres')
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(\"SELECT 1 FROM pg_database WHERE datname='airflow'\")
+        if not cur.fetchone():
+            cur.execute('CREATE DATABASE airflow')
+            print('Created airflow database')
+        conn.close()
+        "
         airflow db migrate
         airflow users create \
           --username admin --password admin \
@@ -63,7 +81,7 @@ services:
         mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
         numpy==1.26.4 pillow tqdm pyyaml python-dotenv docker
         torch --extra-index-url https://download.pytorch.org/whl/cpu
-        transformers fugashi unidic-lite
+        transformers fugashi unidic-lite prometheus-client
     ports:
       - "8080:8080"
     volumes:
@@ -97,7 +115,7 @@ services:
         mlflow==2.12.1 boto3 psycopg2-binary scikit-learn pandas
         numpy==1.26.4 pillow tqdm pyyaml python-dotenv docker
         torch --extra-index-url https://download.pytorch.org/whl/cpu
-        transformers fugashi unidic-lite
+        transformers fugashi unidic-lite prometheus-client
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./airflow/dags:/opt/airflow/dags
