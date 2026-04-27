@@ -763,11 +763,158 @@ with tab8:
     )
 
 
+# ============================================================================
+# TAB 9 — MONITORING OVERVIEW
+# ============================================================================
+with tab9:
+    _hub_hero("Monitoring", "Real-time API observability and training pipeline metrics via Prometheus and Grafana.")
+    st.markdown("### Two Metric Flows")
+    c1, c2 = st.columns(2)
+    with c1:
+        _hub_card(
+            "API Metrics",
+            "Emitted continuously by the running API. Every prediction and HTTP request is tracked "
+            "in real time via Prometheus."
+        )
+    with c2:
+        _hub_card(
+            "Training Metrics",
+            "Pushed once at the end of each Airflow pipeline run via Pushgateway. Prometheus scrapes the gateway."
+        )
+    st.markdown("")
+    _, img_col, _ = st.columns([1, 2, 1])
+    with img_col:
+        _hub_show_image(_hub_fig("Monitoring-overview.png"))
+    st.markdown(
+        "<div style='text-align:center; color:#475569; font-size:0.95rem;'>"
+        "<b>Both flows end up in Grafana</b>, provisioned automatically — no manual dashboard configuration needed.</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================================
+# TAB 10 — API METRICS
+# ============================================================================
+with tab10:
+    _hub_hero("API Metrics", "Continuous observability of the live API.")
+    api_page = st.radio(
+        "api_page",
+        ["Flow Diagram", "Color Predictions", "Request Count", "Request Duration"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="hub_api_page",
+    )
+    st.divider()
+
+    if api_page == "Flow Diagram":
+        _, img_col, _ = st.columns([1, 1, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("API-metrics-flow.png"))
+    elif api_page == "Color Predictions":
+        _hub_metric_header("rakuten_color_predictions_total", "Counter — labeled by color", "Incremented every time a color is predicted.")
+        _, img_col, _ = st.columns([1, 6, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_color_predictions_total.png"))
+    elif api_page == "Request Count":
+        _hub_metric_header("rakuten_requests_total", "Counter — labeled by method, endpoint, status_code", "Tracks every HTTP request.")
+        _, img_col, _ = st.columns([1, 6, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_requests_total.png"))
+    elif api_page == "Request Duration":
+        _hub_metric_header("rakuten_request_duration_seconds", "Histogram — labeled by method, endpoint", "Records request duration in seconds.")
+        _, img_col, _ = st.columns([1, 6, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_request_duration_seconds.png"))
+
+
+# ============================================================================
+# TAB 11 — TRAINING METRICS
+# ============================================================================
+with tab11:
+    _hub_hero("Training Metrics", "Pushed at the end of each pipeline run.")
+    train_page = st.radio(
+        "train_page",
+        ["Flow Diagram", "Training Run F1", "Training Duration", "Champion F1", "Champion Version"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="hub_train_page",
+    )
+    st.divider()
+
+    if train_page == "Flow Diagram":
+        _, img_col, _ = st.columns([1.5, 1, 1.5])
+        with img_col:
+            _hub_show_image(_hub_fig("Training-metrics-flow.png"))
+    elif train_page == "Training Run F1":
+        _hub_metric_header("rakuten_training_run_f1", "Labeled by model_version and run_id", "F1 score per training run.")
+        _, img_col, _ = st.columns([1, 14, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_training_run_f1.png"))
+    elif train_page == "Training Duration":
+        _hub_metric_header("rakuten_training_duration_seconds", "Labeled by model_version", "Training time per run.")
+        _, img_col, _ = st.columns([1, 4, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_training_duration_seconds.png"))
+    elif train_page == "Champion F1":
+        _hub_metric_header("rakuten_champion_f1", "Single value", "F1 score of the currently promoted champion model.")
+        _, img_col, _ = st.columns([1, 2, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_champion_f1.png"))
+    elif train_page == "Champion Version":
+        _hub_metric_header("rakuten_champion_version", "Single value", "Version number of the champion.")
+        _, img_col, _ = st.columns([1, 2, 1])
+        with img_col:
+            _hub_show_image(_hub_fig("rakuten_champion_version.png"))
+
+
+# ============================================================================
+# TAB 12 — DATA DRIFT
+# ============================================================================
+with tab12:
+    _hub_hero("Data Drift", "Detected with Evidently — comparing reference vs current distributions.")
+    st.markdown("### Data Drift with Evidently")
+    st.info(
+        "Data drift occurs when the statistical distribution of input data changes over time "
+        "- either in the input features, target labels, or both."
+    )
+    st.markdown("")
+    st.markdown("#### Potential Causes in This Project")
+    c1, c2 = st.columns(2)
+    with c1:
+        _hub_card(
+            "Color Trends Change — Label Drift",
+            "The distribution of target labels shifts over time."
+        )
+    with c2:
+        _hub_card(
+            "Photo Lighting Change — Training-Serving Skew",
+            "Systematic change in product photographs."
+        )
+    st.markdown("")
+    st.markdown("#### How Evidently Works")
+    st.markdown(
+        """
+        - Compares a **reference** dataset vs a **current** dataset
+        - Runs statistical tests per feature column (Jensen-Shannon distance for numerical, chi-square for categorical)
+        - Outputs a drift score and a drifted/not-drifted verdict per feature
+        - Generates an **interactive HTML report** with distribution visualizations
+
+        In a real production setup, this comparison would run periodically. If drift is detected, it triggers retraining via the Airflow pipeline.
+        """
+    )
+    st.markdown("#### Live Drift Report")
+    if _HUB_DRIFT_REPORT and Path(_HUB_DRIFT_REPORT).exists():
+        html_content = Path(_HUB_DRIFT_REPORT).read_text(encoding="utf-8")
+        _hub_components.html(html_content, height=800, scrolling=True)
+    else:
+        st.warning("Drift report not found at reports/data_drift_report.html. Run `python -m src.monitoring.drift` to generate it.")
+
+
 
 # ======================================================
 # TAB 1 — MLFLOW WORKFLOW
 # ======================================================
-with tab9:
+with tab13:
     hero(
         "MLflow in Our End-to-End Workflow",
         "How experiment tracking and model governance fit into our MLOps architecture."
@@ -814,7 +961,7 @@ with tab9:
 # ======================================================
 # TAB 2 — WHY MLFLOW
 # ======================================================
-with tab10:
+with tab14:
     hero(
         "Why We Introduced MLflow",
         "From manual experimentation to professional model lifecycle management."
@@ -868,7 +1015,7 @@ with tab10:
 # ======================================================
 # TAB 3 — MLFLOW LIFECYCLE
 # ======================================================
-with tab11:
+with tab15:
     hero(
         "MLflow Lifecycle Inside Our Pipeline",
         "From training to tracking, registry and deployment."
@@ -1033,7 +1180,7 @@ with tab11:
 # ======================================================
 # TAB 4 — LIVE VALIDATION
 # ======================================================
-with tab12:
+with tab16:
     hero(
         "Live Deployment Validation",
         "Proof that backend service and model source are operational."
@@ -1134,156 +1281,6 @@ with tab12:
         "The ML model can be managed and served in a real runtime environment."
     )
 
-
-
-# ============================================================================
-# TAB 9 — MONITORING OVERVIEW
-# ============================================================================
-with tab13:
-    _hub_hero("Monitoring", "Real-time API observability and training pipeline metrics via Prometheus and Grafana.")
-    st.markdown("### Two Metric Flows")
-    c1, c2 = st.columns(2)
-    with c1:
-        _hub_card(
-            "API Metrics",
-            "Emitted continuously by the running API. Every prediction and HTTP request is tracked "
-            "in real time via Prometheus."
-        )
-    with c2:
-        _hub_card(
-            "Training Metrics",
-            "Pushed once at the end of each Airflow pipeline run via Pushgateway. Prometheus scrapes the gateway."
-        )
-    st.markdown("")
-    _, img_col, _ = st.columns([1, 2, 1])
-    with img_col:
-        _hub_show_image(_hub_fig("Monitoring-overview.png"))
-    st.markdown(
-        "<div style='text-align:center; color:#475569; font-size:0.95rem;'>"
-        "<b>Both flows end up in Grafana</b>, provisioned automatically — no manual dashboard configuration needed.</div>",
-        unsafe_allow_html=True,
-    )
-
-
-# ============================================================================
-# TAB 10 — API METRICS
-# ============================================================================
-with tab14:
-    _hub_hero("API Metrics", "Continuous observability of the live API.")
-    api_page = st.radio(
-        "api_page",
-        ["Flow Diagram", "Color Predictions", "Request Count", "Request Duration"],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="hub_api_page",
-    )
-    st.divider()
-
-    if api_page == "Flow Diagram":
-        _, img_col, _ = st.columns([1, 1, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("API-metrics-flow.png"))
-    elif api_page == "Color Predictions":
-        _hub_metric_header("rakuten_color_predictions_total", "Counter — labeled by color", "Incremented every time a color is predicted.")
-        _, img_col, _ = st.columns([1, 6, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("rakuten_color_predictions_total.png"))
-    elif api_page == "Request Count":
-        _hub_metric_header("rakuten_requests_total", "Counter — labeled by method, endpoint, status_code", "Tracks every HTTP request.")
-        _, img_col, _ = st.columns([1, 6, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("rakuten_requests_total.png"))
-    elif api_page == "Request Duration":
-        _hub_metric_header("rakuten_request_duration_seconds", "Histogram — labeled by method, endpoint", "Records request duration in seconds.")
-        _, img_col, _ = st.columns([1, 6, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("rakuten_request_duration_seconds.png"))
-
-
-# ============================================================================
-# TAB 11 — TRAINING METRICS
-# ============================================================================
-with tab15:
-    _hub_hero("Training Metrics", "Pushed at the end of each pipeline run.")
-    train_page = st.radio(
-        "train_page",
-        ["Flow Diagram", "Training Run F1", "Training Duration", "Champion F1", "Champion Version"],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="hub_train_page",
-    )
-    st.divider()
-
-    if train_page == "Flow Diagram":
-        _, img_col, _ = st.columns([1.5, 1, 1.5])
-        with img_col:
-            _hub_show_image(_hub_fig("Training-metrics-flow.png"))
-    elif train_page == "Training Run F1":
-        _hub_metric_header("rakuten_training_run_f1", "Labeled by model_version and run_id", "F1 score per training run.")
-        _, img_col, _ = st.columns([1, 14, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("rakuten_training_run_f1.png"))
-    elif train_page == "Training Duration":
-        _hub_metric_header("rakuten_training_duration_seconds", "Labeled by model_version", "Training time per run.")
-        _, img_col, _ = st.columns([1, 4, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("rakuten_training_duration_seconds.png"))
-    elif train_page == "Champion F1":
-        _hub_metric_header("rakuten_champion_f1", "Single value", "F1 score of the currently promoted champion model.")
-        _, img_col, _ = st.columns([1, 2, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("rakuten_champion_f1.png"))
-    elif train_page == "Champion Version":
-        _hub_metric_header("rakuten_champion_version", "Single value", "Version number of the champion.")
-        _, img_col, _ = st.columns([1, 2, 1])
-        with img_col:
-            _hub_show_image(_hub_fig("rakuten_champion_version.png"))
-
-
-# ============================================================================
-# TAB 12 — DATA DRIFT
-# ============================================================================
-with tab16:
-    _hub_hero("Data Drift", "Detected with Evidently — comparing reference vs current distributions.")
-    st.markdown("### Data Drift with Evidently")
-    st.info(
-        "Data drift occurs when the statistical distribution of input data changes over time "
-        "- either in the input features, target labels, or both."
-    )
-    st.markdown("")
-    st.markdown("#### Potential Causes in This Project")
-    c1, c2 = st.columns(2)
-    with c1:
-        _hub_card(
-            "Color Trends Change — Label Drift",
-            "The distribution of target labels shifts over time."
-        )
-    with c2:
-        _hub_card(
-            "Photo Lighting Change — Training-Serving Skew",
-            "Systematic change in product photographs."
-        )
-    st.markdown("")
-    st.markdown("#### How Evidently Works")
-    st.markdown(
-        """
-        - Compares a **reference** dataset vs a **current** dataset
-        - Runs statistical tests per feature column (Jensen-Shannon distance for numerical, chi-square for categorical)
-        - Outputs a drift score and a drifted/not-drifted verdict per feature
-        - Generates an **interactive HTML report** with distribution visualizations
-
-        In a real production setup, this comparison would run periodically. If drift is detected, it triggers retraining via the Airflow pipeline.
-        """
-    )
-    st.markdown("#### Live Drift Report")
-    if _HUB_DRIFT_REPORT and Path(_HUB_DRIFT_REPORT).exists():
-        html_content = Path(_HUB_DRIFT_REPORT).read_text(encoding="utf-8")
-        _hub_components.html(html_content, height=800, scrolling=True)
-    else:
-        st.warning("Drift report not found at reports/data_drift_report.html. Run `python -m src.monitoring.drift` to generate it.")
-
-
-
 # ======================================================
 # TAB 5 — LIVE DEMO
 # ======================================================
@@ -1308,10 +1305,10 @@ with tab17:
 
         with col1:
             st.subheader("Input Data")
-            item_name = st.text_area("Product Name", value="Blue Denim Jacket")
+            item_name = st.text_area("Product Name", placeholder="e.g., Blue Denim Jacket")
             item_caption = st.text_area(
                 "Product Description",
-                value="Classic light-wash blue jean jacket with silver buttons."
+                placeholder="e.g., Classic light-wash blue jean jacket with silver buttons."
             )
             uploaded_file = st.file_uploader("Product Image", type=["jpg", "jpeg", "png"], key="single_upload")
 
@@ -1408,7 +1405,7 @@ with tab17:
             product_id = st.number_input(
                 "Product ID",
                 min_value=1,
-                value=1,
+                value=232,
                 step=1,
                 help="ID from the products table in Postgres",
             )

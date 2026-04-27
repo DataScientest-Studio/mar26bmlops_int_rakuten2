@@ -29,7 +29,7 @@ default_args = {
 
 
 # ENV switch(not implemented yet) — set FORCE_CPU=1 in Airflow (or wherever) to disable GPU
-USE_GPU = os.getenv("USE_GPU", "1") == "1"
+USE_GPU = os.getenv("USE_GPU", "0") == "1"
 GPU_FLAG = "--gpus all " if USE_GPU else ""
 
 
