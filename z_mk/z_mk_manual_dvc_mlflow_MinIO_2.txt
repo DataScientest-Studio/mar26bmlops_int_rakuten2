@@ -349,6 +349,7 @@ OR GPU!!
 docker compose --profile training run --rm training \
   python -m src.models.predict_model_final \
   --split test --model-alias champion
+,
                   or -version 113
 
 OR drift report Ver 2:
@@ -435,4 +436,15 @@ print('model_source:', svc.model_source)
 print('model_type:', svc.model_type)
 print('num_params:', sum(p.numel() for p in svc._ice_model.parameters()))
 print('first_layer_hash:', hash(str(next(iter(svc._ice_model.parameters())).flatten().cpu().tolist()[:100])))
+"
+
+MANUEL setzte den championdocker compose exec mlflow python -c "
+from mlflow.tracking import MlflowClient
+client = MlflowClient(tracking_uri='http://localhost:5000')
+client.set_registered_model_alias(
+    name='rakuten-ice-dual-encoder',
+    alias='champion',
+    version='120',
+)
+print('Champion now v120')
 "

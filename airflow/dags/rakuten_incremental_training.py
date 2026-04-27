@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
-
+import os
 
 # Inside container always correct
 db_url = "postgresql://postgres:postgres@postgres:5432/rakuten"
@@ -11,13 +11,13 @@ TOTAL_TRAIN = 190_908
 APP_ROOT = "/opt/airflow/app"
 
 RUN_CONFIGS = []
-for i, n_images in enumerate(range(100_000, 190_908, 10_000)):
+for i, n_images in enumerate(range(50, 450, 50)):
     fraction = round(n_images / TOTAL_TRAIN, 6)
     RUN_CONFIGS.append({
         "run_index": i + 1,
         "n_images": n_images,
         "data_fraction": fraction,
-        "epochs": 4
+        "epochs": 1
     })
 
 default_args = {
@@ -27,9 +27,16 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
 }
 
+
+# ENV switch(not implemented yet) — set FORCE_CPU=1 in Airflow (or wherever) to disable GPU
+USE_GPU = os.getenv("USE_GPU", "1") == "1"
+GPU_FLAG = "--gpus all " if USE_GPU else ""
+
+
 # Docker command template for GPU training
 DOCKER_TRAIN_CMD = (
-    "docker run --rm --gpus all "
+    "docker run --rm "
+    f"{GPU_FLAG}"  # ← either "--gpus all " or ""
     "--shm-size=4g "
     "--network rakuten2_default "
     "-v /home/mirco/rakuten2/data:/app/data "
@@ -52,7 +59,7 @@ DOCKER_TRAIN_CMD = (
     "rakuten2-training "
     "python -m src.models.train_model_final "
     "--data-fraction {fraction} --epochs {epochs} "
-    # "--val-fraction 0.05 "
+    "--val-fraction 0.005 "
     "--skip-champion-compare"
     # 0.05 x 21212 = ~1060 val images — still representative, much faster
 )
@@ -224,6 +231,7 @@ with DAG(
     compare = PythonOperator(
         task_id="compare_and_promote",
         python_callable=task_compare_and_promote,
+        trigger_rule="none_failed_min_one_success",
     )
 
     # After compare_and_promote: trigger API reload so the freshly-promoted
