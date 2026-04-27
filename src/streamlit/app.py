@@ -23,6 +23,7 @@ PAGES = {
     "🏁 Intro / Project Overview": BASE_DIR / "app_intro.py",
     "📊 MLflow / Training Pipeline": BASE_DIR / "app_mlflow.py",
     "📈 Monitoring / Grafana": BASE_DIR / "app_monitoring.py",
+    "🚀 Live Demo": BASE_DIR / "app_livedemo.py"
 }
 
 # ======================================================
@@ -57,4 +58,4 @@ else:
 # ======================================================
 
 st.sidebar.markdown("---")
-st.sidebar.caption("MLOps • MLflow • Monitoring • Deployment")
+st.sidebar.caption("MLOps • MLflow • Monitoring • Deployment • Live Demo")
