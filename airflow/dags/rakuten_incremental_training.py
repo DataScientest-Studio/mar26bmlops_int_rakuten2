@@ -83,24 +83,29 @@ def task_compare_and_promote(**context):
     client = MlflowClient(tracking_uri=tracking_uri)
     model_name = os.getenv("MLFLOW_REGISTERED_MODEL_NAME", "rakuten-ice-dual-encoder")
 
-    # Get all model versions, find the 8 most recent
     versions = client.search_model_versions(f"name='{model_name}'")
     if not versions:
         raise RuntimeError("No model versions found")
 
-    recent = sorted(versions, key=lambda v: int(v.version), reverse=True)[:8]
+    all_versions = sorted(versions, key=lambda v: int(v.version), reverse=True)
+    recent = all_versions[:8]
 
+    # Find overall champion across all versions
     best = None
     best_f1 = -1
-    results = []
+    for v in all_versions:
+        run = client.get_run(v.run_id)
+        f1 = run.data.metrics.get("best_val_f1_micro", 0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best = v
 
+    # Collect metrics only for the 8 most recent runs (for the bar chart)
+    results = []
     for v in recent:
         run = client.get_run(v.run_id)
         f1 = run.data.metrics.get("best_val_f1_micro", 0)
         results.append({"version": v.version, "run_id": v.run_id, "f1": f1})
-        if f1 > best_f1:
-            best_f1 = f1
-            best = v
 
     print(f"\n{'='*60}")
     for r in sorted(results, key=lambda x: x["f1"], reverse=True):
@@ -109,7 +114,38 @@ def task_compare_and_promote(**context):
     print(f"{'='*60}")
 
     client.set_registered_model_alias(name=model_name, alias="champion", version=best.version)
-    print(f"Champion set: v{best.version} (F1={best_f1:.4f})")
+    print(f"Champion set: v{best.version} (F1={best_f1:.4f}) [overall best across all {len(all_versions)} versions]")
+
+    from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+
+    registry = CollectorRegistry()
+    g_run_f1 = Gauge(
+        "rakuten_training_run_f1",
+        "Validation F1 score per training run",
+        ["model_version", "run_id"],
+        registry=registry,
+    )
+    g_duration = Gauge(
+        "rakuten_training_duration_seconds",
+        "Training run duration in seconds",
+        ["model_version"],
+        registry=registry,
+    )
+    g_champion_f1 = Gauge("rakuten_champion_f1", "Champion model F1 score", registry=registry)
+    g_champion_version = Gauge("rakuten_champion_version", "Champion model version number", registry=registry)
+
+    for r in results:
+        g_run_f1.labels(model_version=r["version"], run_id=r["run_id"]).set(r["f1"])
+        run_info = client.get_run(r["run_id"]).info
+        if run_info.end_time and run_info.start_time:
+            duration = (run_info.end_time - run_info.start_time) / 1000
+            g_duration.labels(model_version=r["version"]).set(duration)
+    g_champion_f1.set(best_f1)
+    g_champion_version.set(int(best.version))
+
+    pushgateway_url = os.getenv("PUSHGATEWAY_URL", "pushgateway:9091")
+    push_to_gateway(pushgateway_url, job="rakuten_training", registry=registry)
+    print(f"Metrics pushed to Pushgateway at {pushgateway_url}")
 
 
 with DAG(

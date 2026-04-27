@@ -16,6 +16,9 @@ Start:
     uvicorn src.api.main:app --reload --port 8000
 """
 import sys
+import time
+import tempfile
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -23,8 +26,11 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from prometheus_client import Counter, Histogram, make_asgi_app
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -50,6 +56,41 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+color_predictions_counter = Counter(
+    "rakuten_color_predictions_total",
+    "Total number of times each color was predicted",
+    ["color"],
+)
+
+requests_counter = Counter(
+    "rakuten_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status_code"],
+)
+
+requests_latency = Histogram(
+    "rakuten_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "endpoint"],
+)
+
+class PrometheusMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration = time.perf_counter() - start
+
+        endpoint = request.url.path
+        if endpoint != "/metrics":  # avoid self-scrape noise
+            requests_counter.labels(request.method, endpoint, response.status_code).inc()
+            requests_latency.labels(request.method, endpoint).observe(duration)
+
+        return response
+
+app.add_middleware(PrometheusMiddleware)
+
+app.mount("/metrics", make_asgi_app())
 
 
 def model_dep() -> ModelService:
@@ -82,6 +123,8 @@ def _build_scores(result: dict) -> list[ColorScore]:
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 def predict_colors(request: PredictRequest, service: ModelService = Depends(model_dep)):
     result = service.predict(request.item_name, request.item_caption, request.image_path)
+    for color in result["predicted"]:
+        color_predictions_counter.labels(color=color).inc()
     return PredictionResponse(
         predicted_colors=result["predicted"],
         all_scores=_build_scores(result),
@@ -116,6 +159,8 @@ async def predict_with_upload(
         if image_path:
             Path(image_path).unlink(missing_ok=True)
 
+    for color in result["predicted"]:
+        color_predictions_counter.labels(color=color).inc()
     return PredictionResponse(
         predicted_colors=result["predicted"],
         all_scores=_build_scores(result),
@@ -126,17 +171,61 @@ async def predict_with_upload(
 
 @app.post("/predict/batch", response_model=BatchPredictionResponse, tags=["Prediction"])
 def predict_batch(request: BatchPredictRequest, service: ModelService = Depends(model_dep)):
-    import time
     start = time.perf_counter()
     predictions = []
     for item in request.items:
         result = service.predict(item.item_name, item.item_caption, item.image_path)
+        for color in result["predicted"]:
+            color_predictions_counter.labels(color=color).inc()
         predictions.append(PredictionResponse(
             predicted_colors=result["predicted"],
             all_scores=_build_scores(result),
             model_type=result["model_type"],
             inference_ms=result["inference_ms"],
         ))
+    total_ms = (time.perf_counter() - start) * 1000
+    return BatchPredictionResponse(
+        predictions=predictions,
+        total_items=len(predictions),
+        total_inference_ms=round(total_ms, 2),
+    )
+
+
+@app.post("/predict/batch/upload", response_model=BatchPredictionResponse, tags=["Prediction"])
+async def predict_batch_with_upload(
+    item_names: list[str] = Form(...),
+    item_captions: list[str] = Form(...),
+    images: list[UploadFile] = File(...),
+    service: ModelService = Depends(model_dep),
+):
+    if not (len(item_names) == len(item_captions) == len(images)):
+        raise HTTPException(400, "Lists of names, captions, and images must match in length.")
+
+    start = time.perf_counter()
+    predictions = []
+    temp_paths = []
+
+    try:
+        for img in images:
+            suffix = Path(img.filename).suffix or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(img.file, tmp)
+                temp_paths.append(tmp.name)
+
+        for i in range(len(temp_paths)):
+            result = service.predict(item_names[i], item_captions[i], temp_paths[i])
+            for color in result["predicted"]:
+                color_predictions_counter.labels(color=color).inc()
+            predictions.append(PredictionResponse(
+                predicted_colors=result["predicted"],
+                all_scores=_build_scores(result),
+                model_type=result["model_type"],
+                inference_ms=result["inference_ms"],
+            ))
+    finally:
+        for path in temp_paths:
+            Path(path).unlink(missing_ok=True)
+
     total_ms = (time.perf_counter() - start) * 1000
     return BatchPredictionResponse(
         predictions=predictions,
