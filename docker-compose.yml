@@ -76,7 +76,7 @@ services:
     command: >
       sh -c "pip install --no-cache-dir psycopg2-binary boto3 &&
       mlflow server
-      --backend-store-uri ${MLFLOW_BACKEND_STORE_URI}
+      --backend-store-uri postgresql://postgres:postgres@postgres:5432/mlflow_meta
       --default-artifact-root s3://mlflow/
       --host 0.0.0.0
       --port 5000"
@@ -102,13 +102,15 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./db:/app/db
+      - hf_cache:/root/.cache/huggingface
+      - mlflow_cache:/root/.mlflow 
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 300s
 
   # -- GPU training container (mk) --
   # Usage: docker compose --profile training run --rm training
@@ -169,3 +171,5 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  hf_cache:
+  mlflow_cache:

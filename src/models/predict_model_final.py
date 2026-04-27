@@ -114,7 +114,7 @@ class SQLInferenceDataset(Dataset):
         self.tokenizer = tokenizer
         self.image_processor = image_processor
         self.max_len = max_len
-        self.valid_indices = valid_indices or list(range(len(self.df)))
+        self.valid_indices = valid_indices if valid_indices is not None else list(range(len(self.df)))
         self.image_source = image_source
         self.minio_bucket_images = minio_bucket_images
         self.minio_image_prefix = minio_image_prefix
@@ -442,8 +442,9 @@ def predict(
         mlb_eval.fit([mlb.classes_])
 
         y_true = mlb_eval.transform(df_labels["color_tags"].tolist())
+        eval_indices = sorted(valid_idx) if valid_idx else list(range(len(y_true)))
         f1_micro = f1_score(
-            y_true[sorted(valid_idx)],
+            y_true[eval_indices],
             pred_matrix,
             average="micro",
             zero_division=0,
