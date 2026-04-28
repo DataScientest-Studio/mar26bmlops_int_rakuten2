@@ -316,7 +316,7 @@ def promotion_flag_card(title: str, score: str, status: str, variant: str = "neu
 st.title("Rakuten MLOps System")
 st.caption("MLflow Tracking, Registry, Model Governance and Production Validation")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15, tab16, tab17 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15, tab16, tab17, tab18 = st.tabs(
     [
         # --- INTRO (8 tabs from colleague's app_intro.py) ---
         "1. Project Overview",
@@ -327,17 +327,19 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
         "6. Model Architecture",
         "7. ML Pipeline & API",
         "8. Handover",
+        # --- ML Flow --- 
+        "9. MLflow Workflow",
+        "10. Why MLflow",
+        "11. MLflow Lifecycle",
+        "12. Live Validation",
         # --- MONITORING (4 tabs from colleague's app_monitoring.py) ---
-        "9. Monitoring Overview",
-        "10. API Metrics",
-        "11. Training Metrics",
-        "12. Data Drift",
+        "13. Monitoring Overview",
+        "14. API Metrics",
+        "15. Training Metrics",
+        "16. Data Drift",
         # --- OWN (your 5 tabs, unchanged content) ---
-        "13. MLflow Workflow",
-        "14. Why MLflow",
-        "15. MLflow Lifecycle",
-        "16. Live Validation",
-        "17. Live Demo",
+        "17. Architecture",
+        "18. Live Demo",
     ]
 )
 
@@ -461,6 +463,17 @@ _HUB_END_TO_END = _hub_find([
 _HUB_PIPELINE_EVO = _hub_find([
     "src/streamlit/assets/pipeline_evolution.png", "assets/pipeline_evolution.png", "pipeline_evolution.png",
 ])
+
+
+
+#mk 
+_HUB_MK_ARCHITECTURE = _hub_find([
+    "src/streamlit/images/mk_architekture.jpeg",
+    "src/streamlit/assets/mk_architekture.jpeg",
+    "images/mk_architekture.jpeg",
+    "mk_architekture.jpeg",
+])
+
 
 # Monitoring figures (in reports/figures by colleague's convention)
 _HUB_FIG_DIR = _hub_find(["src/streamlit/ice", "src/streamlit/reports/figures"])
@@ -1285,9 +1298,29 @@ with tab16:
 
 
 # ======================================================
-# TAB 5 — LIVE DEMO
+# TAB 18 — ARCHITECTURE
 # ======================================================
 with tab17:
+    st.title("Architecture")
+
+    if _HUB_MK_ARCHITECTURE:
+        st.image(
+            str(_HUB_MK_ARCHITECTURE),
+            use_container_width=True,
+            caption="Big-picture architecture: 4 zones, 8 components"
+        )
+    else:
+        st.warning(
+            "Architecture image not found. Expected at: "
+            "src/streamlit/images/mk_architekture.jpeg"
+        )
+
+
+
+# ======================================================
+# TAB 5 — LIVE DEMO
+# ======================================================
+with tab18:
     st.title("Rakuten Color Predictor")
 
     demo_mode = st.selectbox(

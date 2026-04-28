@@ -47,6 +47,8 @@ DOCKER_TRAIN_CMD = (
     # Use host cache directly — no need to populate a named volume
     "-v /home/mirco/.cache/huggingface:/root/.cache/huggingface "
     "-w /app "
+    "-e ICE_LR=0.001 "
+    "-e ICE_ES_PATIENCE=6 "
     "-e TRANSFORMERS_OFFLINE=1 "
     "-e HF_DATASETS_OFFLINE=1 "
     "-e MLFLOW_TRACKING_URI=http://mlflow:5000 "

@@ -440,7 +440,9 @@ print('num_params:', sum(p.numel() for p in svc._ice_model.parameters()))
 print('first_layer_hash:', hash(str(next(iter(svc._ice_model.parameters())).flatten().cpu().tolist()[:100])))
 "
 
-MANUEL setzte den championdocker compose exec mlflow python -c "
+MANUEL setzte den champion
+
+docker compose exec mlflow python -c "
 from mlflow.tracking import MlflowClient
 client = MlflowClient(tracking_uri='http://localhost:5000')
 client.set_registered_model_alias(

@@ -109,7 +109,7 @@ ICE_CONFIG = {
     "encoder_lr": float(os.getenv("ICE_ENCODER_LR", "2e-5")),
     "max_epochs": int(os.getenv("ICE_MAX_EPOCHS", "1")),
     "unfreeze_layers": int(os.getenv("ICE_UNFREEZE_LAYERS", "2")),
-    "es_patience": int(os.getenv("ICE_ES_PATIENCE", "3")),
+    "es_patience": int(os.getenv("ICE_ES_PATIENCE", "6")),
     "val_threshold": float(os.getenv("ICE_VAL_THRESHOLD", "0.5")),
     "train_threshold": float(os.getenv("ICE_TRAIN_THRESHOLD", "0.5")),
     "max_len": int(os.getenv("ICE_MAX_LEN", "128")),
