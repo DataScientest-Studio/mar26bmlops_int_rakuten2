@@ -186,3 +186,54 @@ docker compose run --rm training python -m src.pipeline --mode train
 - Structured metadata → PostgreSQL
 - Models & artifacts → MinIO
 - Registry versions → MLflow Model Registry
+
+## # Phase 3 – Monitoring Stack (Prometheus, Grafana, Evidently)
+
+This phase adds full observability over both the running API and the training pipeline.
+
+## Architecture
+
+- **Prometheus**: scrapes metrics from the API and Pushgateway every 15 seconds
+- **Pushgateway**: receives training metrics pushed at the end of each Airflow pipeline run
+- **Grafana**: visualizes all metrics via auto-provisioned dashboards (no manual setup required)
+- **Evidently**: generates interactive HTML data-drift reports comparing reference vs. current data
+
+## Two Metric Flows
+
+**API metrics** — emitted continuously by the running API:
+
+| Metric | Type | Labels |
+|---|---|---|
+| `rakuten_color_predictions_total` | Counter | color |
+| `rakuten_requests_total` | Counter | method, endpoint, status_code |
+| `rakuten_request_duration_seconds` | Histogram | method, endpoint |
+
+**Training metrics** — pushed once per Airflow run via Pushgateway:
+
+| Metric | Type | Labels |
+|---|---|---|
+| `rakuten_training_run_f1` | Gauge | model_version, run_id |
+| `rakuten_training_duration_seconds` | Gauge | model_version |
+| `rakuten_champion_f1` | Gauge | — |
+| `rakuten_champion_version` | Gauge | — |
+
+## Grafana Dashboards
+
+Dashboards are provisioned automatically from `grafana/provisioning/`:
+
+- **API Monitoring** — request counts, durations, color prediction rates
+- **Training Monitoring** — per-run F1, training duration, champion F1 and version
+
+## Data Drift with Evidently
+
+Evidently compares a reference dataset against a current dataset and runs statistical tests per feature. It outputs a drift score and verdict per feature, and generates an interactive HTML report. In a production setup, drift detection would run periodically and trigger retraining via the Airflow pipeline if drift is detected.
+
+Generate a drift report:
+```bash
+python -m src.monitoring.drift
+```
+
+## Services
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000
+- Pushgateway: http://localhost:9091
