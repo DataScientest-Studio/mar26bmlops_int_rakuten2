@@ -452,3 +452,19 @@ client.set_registered_model_alias(
 )
 print('Champion now v120')
 "
+
+
+
+hyper params max_results
+# 1. (du hast schon) Per-class auf VAL ermitteln und JSON saven:
+docker compose --profile training run --rm training \
+  python -m src.models.predict_model_final \
+  --split val --model-version 170 --per-class-threshold
+
+# Output: per_class_thresholds_v170.json gespeichert.
+
+# 2. Diese Thresholds für TEST-Submission verwenden:
+docker compose --profile training run --rm training \
+  python -m src.models.predict_model_final \
+  --split test --model-version 170 \
+  --use-per-class-thresholds /app/reports/per_class_thresholds_v170.json

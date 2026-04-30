@@ -83,8 +83,21 @@ def configure_mlflow_s3() -> None:
         os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 
-def ensure_min_predictions(probs: torch.Tensor, threshold: float, min_preds: int = 1) -> np.ndarray:
-    preds = (probs > threshold).int().cpu().numpy()
+def ensure_min_predictions(probs: torch.Tensor, threshold, min_preds: int = 1) -> np.ndarray:
+    """Apply threshold (scalar or per-class numpy array) and ensure each row has >= min_preds.
+    
+    If threshold is a scalar, all classes share the same cutoff.
+    If threshold is a numpy array shape (n_classes,), each class has its own cutoff.
+    """
+    if isinstance(threshold, np.ndarray):
+        # Per-class thresholds — broadcast across batch dimension
+        # probs shape: (batch, n_classes), threshold shape: (n_classes,)
+        threshold_t = torch.tensor(threshold, dtype=probs.dtype, device=probs.device)
+        preds = (probs > threshold_t).int().cpu().numpy()
+    else:
+        # Scalar threshold (original behavior)
+        preds = (probs > threshold).int().cpu().numpy()
+    
     for i in range(len(preds)):
         if preds[i].sum() < min_preds:
             top_idx = torch.topk(probs[i], min_preds).indices.cpu().numpy()
@@ -251,7 +264,10 @@ def predict(
     model_version=None,
     model_name=None,
     save_outputs=True,
-    save_db=True,
+    save_db=False,
+    sweep_threshold=False,
+    per_class_threshold=False,
+    use_per_class_thresholds=None,
 ):
     """
     Full inference pipeline:
@@ -264,6 +280,20 @@ def predict(
     """
     split = split or ICE_CONFIG.get("predict_split", "val")
     threshold = threshold if threshold is not None else ICE_CONFIG["val_threshold"]
+
+    # new
+    if use_per_class_thresholds:
+        from pathlib import Path
+        tpath = Path(use_per_class_thresholds)
+        if not tpath.exists():
+            raise FileNotFoundError(f"Per-class thresholds file not found: {tpath}")
+        per_class_dict = json.loads(tpath.read_text())
+        # Will be aligned to mlb.classes_ order AFTER mlb is loaded — store dict for now
+        print(f"Loaded per-class thresholds from {tpath}")
+        print(f"  {len(per_class_dict)} classes covered")
+    else:
+        per_class_dict = None
+
     batch_size = batch_size or ICE_CONFIG["batch_size"]
     model_name = model_name or MLFLOW_REGISTERED_MODEL_NAME
 
@@ -302,6 +332,20 @@ def predict(
 
     num_classes = len(mlb.classes_)
     print(f"  {num_classes} classes: {list(mlb.classes_)}")
+
+    # NEW: align per-class thresholds to mlb.classes_ ordering (must be done after mlb loaded)
+    if per_class_dict is not None:
+        threshold = np.array(
+            [per_class_dict.get(c, 0.5) for c in mlb.classes_],
+            dtype=np.float32
+        )
+        # Sanity check — warn about any class missing from JSON
+        missing = [c for c in mlb.classes_ if c not in per_class_dict]
+        if missing:
+            print(f"  WARNING: per-class JSON missing classes (using 0.5): {missing}")
+        print(f"  threshold: per-class array (min={threshold.min():.3f}, max={threshold.max():.3f})")
+    else:
+        print(f"  threshold: scalar {threshold}")
 
     # --------------------------------------------------------
     # Load data from SQL
@@ -362,7 +406,12 @@ def predict(
     # --------------------------------------------------------
     # Inference
     # --------------------------------------------------------
-    print(f"Running inference (threshold={threshold})...")
+    # NEW (avoid spamming the array):
+    if isinstance(threshold, np.ndarray):
+        print(f"Running inference (per-class threshold, mean={threshold.mean():.3f})...")
+    else:
+        print(f"Running inference (threshold={threshold})...")
+        
     use_amp = (device == "cuda")
 
     all_scores = []
@@ -432,6 +481,7 @@ def predict(
     # Compute F1 if labels exist
     # --------------------------------------------------------
     f1_micro = None
+    y_true = None
 
     if df_labels is not None and len(df_labels) > 0:
         from sklearn.metrics import f1_score
@@ -453,6 +503,108 @@ def predict(
             zero_division=0,
         )
         print(f"  F1 micro (split={split}): {f1_micro:.4f}")
+
+
+    if (sweep_threshold or per_class_threshold) and y_true is not None:
+        # numpy is already imported globally — no local import needed
+        # otherwise Python treats `np` as a local var and crashes earlier in the function
+
+        # Get the score matrix aligned with y_tru
+
+        # Get the score matrix aligned with y_true
+        # score_matrix is already (n_valid, n_classes) and aligned with valid_idx
+        y_true_aligned = y_true[sorted(valid_idx)]
+
+        if sweep_threshold:
+            print("\n" + "="*60)
+            print("THRESHOLD SWEEP (global)")
+            print("="*60)
+            best_t = 0.5
+            best_f1 = 0.0
+            results = []
+            for t in np.arange(0.20, 0.65, 0.025):
+                preds_t = (score_matrix > t).astype(int)
+                # Ensure at least one prediction per row (else F1 collapses)
+                empty_rows = preds_t.sum(axis=1) == 0
+                if empty_rows.any():
+                    # For empty rows, predict argmax
+                    top_idx = score_matrix[empty_rows].argmax(axis=1)
+                    for row_i, col_i in zip(np.where(empty_rows)[0], top_idx):
+                        preds_t[row_i, col_i] = 1
+
+                f1_t = f1_score(y_true_aligned, preds_t, average="micro", zero_division=0)
+                results.append((t, f1_t))
+                if f1_t > best_f1:
+                    best_f1 = f1_t
+                    best_t = t
+
+            print(f"{'Threshold':>10}  {'F1 micro':>10}")
+            print("-" * 25)
+            for t, f1_t in results:
+                marker = "  <-- BEST" if t == best_t else ""
+                print(f"{t:>10.3f}  {f1_t:>10.4f}{marker}")
+
+            print(f"\nGlobal sweep result: threshold={best_t:.3f}, F1 micro={best_f1:.4f}")
+            print(f"Improvement vs default 0.5: +{(best_f1 - f1_micro)*100:.2f}pp")
+
+        if per_class_threshold:
+            print("\n" + "="*60)
+            print("PER-CLASS THRESHOLD OPTIMIZATION")
+            print("="*60)
+            best_thresholds = np.full(len(mlb.classes_), 0.5)
+
+            print(f"{'Class':<18} {'Best T':>8} {'Best F1':>10} {'Default F1 (0.5)':>18}")
+            print("-" * 60)
+
+            for c_idx, color in enumerate(mlb.classes_):
+                y_c = y_true_aligned[:, c_idx]
+                p_c = score_matrix[:, c_idx]
+
+                # Skip if class has zero samples in either positive or negative
+                if y_c.sum() == 0 or y_c.sum() == len(y_c):
+                    print(f"{color:<18} {'(skip)':>8}")
+                    continue
+
+                # Default F1 at threshold 0.5
+                default_pred = (p_c > 0.5).astype(int)
+                default_f1 = f1_score(y_c, default_pred, average="binary", zero_division=0)
+
+                best_t_c = 0.5
+                best_f1_c = default_f1
+                for t in np.arange(0.15, 0.80, 0.025):
+                    pred_c = (p_c > t).astype(int)
+                    f1_c = f1_score(y_c, pred_c, average="binary", zero_division=0)
+                    if f1_c > best_f1_c:
+                        best_f1_c = f1_c
+                        best_t_c = t
+
+                best_thresholds[c_idx] = best_t_c
+                print(f"{color:<18} {best_t_c:>8.3f} {best_f1_c:>10.4f} {default_f1:>18.4f}")
+
+            # Apply per-class thresholds and compute global F1
+            preds_pc = (score_matrix > best_thresholds).astype(int)
+            empty_rows = preds_pc.sum(axis=1) == 0
+            if empty_rows.any():
+                top_idx = score_matrix[empty_rows].argmax(axis=1)
+                for row_i, col_i in zip(np.where(empty_rows)[0], top_idx):
+                    preds_pc[row_i, col_i] = 1
+
+            f1_pc_micro = f1_score(y_true_aligned, preds_pc, average="micro", zero_division=0)
+            f1_pc_macro = f1_score(y_true_aligned, preds_pc, average="macro", zero_division=0)
+            print(f"\nPer-class result: F1 micro={f1_pc_micro:.4f}, F1 macro={f1_pc_macro:.4f}")
+            print(f"Improvement vs default 0.5: +{(f1_pc_micro - f1_micro)*100:.2f}pp")
+
+            # Save the per-class thresholds for use during inference
+
+            thresholds_dict = {str(c): float(t) for c, t in zip(mlb.classes_, best_thresholds)}
+            thresholds_path = out_path.parent / f"per_class_thresholds_v{resolved_model_version}.json"
+            thresholds_path.parent.mkdir(parents=True, exist_ok=True)
+            thresholds_path.write_text(json.dumps(thresholds_dict, indent=2))
+            print(f"\nSaved per-class thresholds to {thresholds_path}")
+
+        print("="*60 + "\n")
+
+
 
     # --------------------------------------------------------
     # Save predictions to DB
@@ -570,6 +722,28 @@ if __name__ == "__main__":
         help=f"Registered model name (default: {MLFLOW_REGISTERED_MODEL_NAME})"
     )
 
+    parser.add_argument(
+        "--sweep-threshold",
+        action="store_true",
+        help="Sweep thresholds 0.20..0.65 step 0.025 to find optimal global threshold "
+            "based on micro-F1. Requires labels in the split (val).",
+    )
+    parser.add_argument(
+        "--per-class-threshold",
+        action="store_true",
+        help="Optimize threshold per color class (binary F1 per class). More granular, "
+            "but risk of overfitting to val. Requires labels in split.",
+    )
+
+    parser.add_argument(
+        "--use-per-class-thresholds",
+        type=str,
+        default=None,
+        help="Path to a per_class_thresholds_vXXX.json file. If set, --threshold is ignored "
+             "and each class uses its own optimized threshold.",
+    )
+
+
     args = parser.parse_args()
 
     predict(
@@ -580,4 +754,7 @@ if __name__ == "__main__":
         model_alias=args.model_alias,
         model_version=args.model_version,
         model_name=args.model_name,
+        sweep_threshold=args.sweep_threshold,
+        per_class_threshold=args.per_class_threshold,
+        use_per_class_thresholds=args.use_per_class_thresholds
     )

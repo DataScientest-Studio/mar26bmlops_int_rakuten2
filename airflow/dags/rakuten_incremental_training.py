@@ -11,13 +11,13 @@ TOTAL_TRAIN = 190_908
 APP_ROOT = "/opt/airflow/app"
 
 RUN_CONFIGS = []
-for i, n_images in enumerate(range(50, 450, 50)):
+for i, n_images in enumerate(range(190_900, 190_908, 1000)):
     fraction = round(n_images / TOTAL_TRAIN, 6)
     RUN_CONFIGS.append({
         "run_index": i + 1,
         "n_images": n_images,
         "data_fraction": fraction,
-        "epochs": 1
+        "epochs": 35
     })
 
 default_args = {
@@ -29,7 +29,7 @@ default_args = {
 
 
 # ENV switch(not implemented yet) — set FORCE_CPU=1 in Airflow (or wherever) to disable GPU
-USE_GPU = os.getenv("USE_GPU", "0") == "1"
+USE_GPU = os.getenv("USE_GPU", "1") == "1"
 GPU_FLAG = "--gpus all " if USE_GPU else ""
 
 
@@ -48,7 +48,7 @@ DOCKER_TRAIN_CMD = (
     "-v /home/mirco/.cache/huggingface:/root/.cache/huggingface "
     "-w /app "
     "-e ICE_LR=0.001 "
-    "-e ICE_ES_PATIENCE=6 "
+    "-e ICE_ES_PATIENCE=5 "
     "-e TRANSFORMERS_OFFLINE=1 "
     "-e HF_DATASETS_OFFLINE=1 "
     "-e MLFLOW_TRACKING_URI=http://mlflow:5000 "
@@ -58,10 +58,12 @@ DOCKER_TRAIN_CMD = (
     "-e DATABASE_URL=postgresql://postgres:postgres@postgres:5432/rakuten "
     "-e DB_BACKEND=postgres "
     "-e IMAGE_SOURCE=local "
+    "-e ICE_UNFREEZE_LAYERS=3 "
+    "-e ICE_ENCODER_LR=1e-5 "
     "rakuten2-training "
     "python -m src.models.train_model_final "
     "--data-fraction {fraction} --epochs {epochs} "
-    "--val-fraction 0.005 "
+    # "--val-fraction 0.005 "
     "--skip-champion-compare"
     # 0.05 x 21212 = ~1060 val images — still representative, much faster
 )

@@ -328,8 +328,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
         "7. ML Pipeline & API",
         "8. Handover",
         # --- ML Flow --- 
-        "9. MLflow Workflow",
-        "10. Why MLflow",
+        "9. Why MLflow",
+        "10. MLflow Workflow",
         "11. MLflow Lifecycle",
         "12. Live Validation",
         # --- MONITORING (4 tabs from colleague's app_monitoring.py) ---
@@ -776,58 +776,10 @@ with tab8:
     )
 
 
-
-# ======================================================
-# TAB 1 — MLFLOW WORKFLOW
-# ======================================================
-with tab9:
-    hero(
-        "MLflow in Our End-to-End Workflow",
-        "How experiment tracking and model governance fit into our MLOps architecture."
-    )
-
-    show_image(
-        IMG_INTRO,
-        caption="Source: Bytepawn.com — adapted for academic presentation"
-    )
-
-    st.divider()
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-        card(
-            "Track Runs",
-            "Store parameters, metrics, artifacts and model outputs for every training run."
-        )
-
-    with c2:
-        card(
-            "Compare Results",
-            "Evaluate multiple experiments in a reproducible and structured way."
-        )
-
-    with c3:
-        card(
-            "Register Versions",
-            "Promote successful runs into governed model versions instead of unmanaged local files."
-        )
-
-    with c4:
-        card(
-            "Deploy Safely",
-            "Connect experiment management with model-serving decisions and deployment readiness."
-        )
-
-    note(
-        "<b>Presentation message:</b> MLflow connects experimentation with deployment. "
-        "It transforms isolated training runs into a structured machine learning workflow."
-    )
-
 # ======================================================
 # TAB 2 — WHY MLFLOW
 # ======================================================
-with tab10:
+with tab9:
     hero(
         "Why We Introduced MLflow",
         "From manual experimentation to professional model lifecycle management."
@@ -876,6 +828,54 @@ with tab10:
 
     note(
         "<b>Presentation message:</b> MLflow improved reproducibility, comparison, version control and deployment readiness."
+    )
+
+
+# ======================================================
+# TAB 1 — MLFLOW WORKFLOW
+# ======================================================
+with tab10:
+    hero(
+        "MLflow in Our End-to-End Workflow",
+        "How experiment tracking and model governance fit into our MLOps architecture."
+    )
+
+    show_image(
+        IMG_INTRO,
+        caption="Source: Bytepawn.com — adapted for academic presentation"
+    )
+
+    st.divider()
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        card(
+            "Track Runs",
+            "Store parameters, metrics, artifacts and model outputs for every training run."
+        )
+
+    with c2:
+        card(
+            "Compare Results",
+            "Evaluate multiple experiments in a reproducible and structured way."
+        )
+
+    with c3:
+        card(
+            "Register Versions",
+            "Promote successful runs into governed model versions instead of unmanaged local files."
+        )
+
+    with c4:
+        card(
+            "Deploy Safely",
+            "Connect experiment management with model-serving decisions and deployment readiness."
+        )
+
+    note(
+        "<b>Presentation message:</b> MLflow connects experimentation with deployment. "
+        "It transforms isolated training runs into a structured machine learning workflow."
     )
 
 # ======================================================
