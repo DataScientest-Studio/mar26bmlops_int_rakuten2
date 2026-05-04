@@ -191,6 +191,101 @@ docker compose run --rm training python -m src.pipeline --mode train
 
 This phase adds full observability over both the running API and the training pipeline.
 
+
+## Phase 4 – Orchestration with Apache Airflow
+
+This phase ties everything together: an Airflow DAG runs the full incremental training workflow end-to-end and promotes the best model automatically.
+
+### Architecture
+
+- **Airflow Scheduler + Webserver**: built from a custom `airflow/Dockerfile` (preinstalled Python deps so containers don't reinstall on every start)
+- **PostgreSQL**: separate `airflow` database for Airflow metadata (alongside `rakuten` and `mlflow_meta`)
+- **LocalExecutor**: tasks run in-process on the scheduler — sufficient for a single-host MLOps lab
+- **Docker-in-Docker pattern**: training tasks shell out via `BashOperator` → `docker run --gpus all rakuten2-training ...` against the host Docker socket (`/var/run/docker.sock` mounted in)
+- **Pushgateway**: training metrics pushed once per DAG run, scraped by Prometheus, visualized in Grafana
+
+### DAG: `rakuten_incremental_training`
+
+A single DAG (`airflow/dags/rakuten_incremental_training.py`) orchestrates the whole training round:
+
+```
+check_prerequisites
+        │
+        ▼
+train_run_1 ──► train_run_2 ──► … ──► train_run_8
+        │
+        ▼
+compare_and_promote
+        │
+        ▼
+reload_api_champion
+```
+
+| Task | Type | Purpose |
+|---|---|---|
+| `check_prerequisites` | PythonOperator | Verifies Postgres has enough train/val rows and MLflow is reachable |
+| `train_run_1..8` | BashOperator | Sequential GPU training runs with **increasing data fractions** — each launches a fresh `rakuten2-training` container |
+| `compare_and_promote` | PythonOperator | Scans **all** registered model versions, picks the highest `best_val_f1_micro`, sets the `champion` alias, and pushes per-run + champion metrics to Pushgateway |
+| `reload_api_champion` | BashOperator | Hits `POST /admin/reload` on the API so the new champion is served without a container restart (tolerant: `|| true`) |
+
+Why incremental fractions: the DAG simulates a realistic retraining schedule where the dataset grows over time. Each run trains on a slightly larger slice (e.g. `0.524 → 0.890`), is registered as its own MLflow model version, and only the strongest version becomes champion.
+
+### Run It
+
+```bash
+# 1. Bring up the full stack (base + Airflow)
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
+
+# 2. (First time only) initialize Airflow metadata DB and admin user
+docker compose -f docker-compose.yml -f docker-compose.airflow.yml run --rm airflow-init
+
+# 3. (After every restart) grant the Airflow container access to the host Docker socket
+docker exec -u root rakuten_airflow_scheduler chmod 666 /var/run/docker.sock
+
+# 4. Trigger the DAG (or use the UI at http://localhost:8080, admin/admin)
+docker exec rakuten_airflow_scheduler airflow dags trigger rakuten_incremental_training
+
+# 5. Follow logs of a specific train task
+docker exec rakuten_airflow_scheduler bash -c \
+  'RUN=$(ls -t /opt/airflow/logs/dag_id=rakuten_incremental_training/ | head -1); \
+   tail -f "/opt/airflow/logs/dag_id=rakuten_incremental_training/$RUN/task_id=train_run_1/attempt=1.log"'
+```
+
+### Configuration
+
+DAG-level configuration lives at the top of `airflow/dags/rakuten_incremental_training.py`:
+
+- `RUN_CONFIGS`: list of `{run_index, n_images, data_fraction, epochs}` — edit to change the curriculum
+- `DOCKER_TRAIN_CMD`: the templated `docker run` invocation (volumes, env, GPU flag)
+- `USE_GPU` env var: set `USE_GPU=0` on the scheduler to run CPU-only
+
+Environment variables consumed by the DAG: `MLFLOW_TRACKING_URI`, `MLFLOW_REGISTERED_MODEL_NAME`, `PUSHGATEWAY_URL`, `MINIO_ACCESS_KEY/SECRET_KEY`, `DOCKER_GID`.
+
+### Metrics Emitted by the DAG
+
+Pushed to Pushgateway by `compare_and_promote` (then scraped by Prometheus, visible in Grafana):
+
+| Metric | Type | Labels |
+|---|---|---|
+| `rakuten_training_run_f1` | Gauge | `model_version`, `run_id` |
+| `rakuten_training_duration_seconds` | Gauge | `model_version` |
+| `rakuten_champion_f1` | Gauge | — |
+| `rakuten_champion_version` | Gauge | — |
+
+### Prerequisites Before Triggering
+
+The DAG assumes:
+1. Postgres `rakuten` DB is populated (>100k train rows, >10k val rows). If empty, run the ingest snippet from the *Database Ingestion* section.
+2. Raw images are present at `data/images/` on the host (mounted into each training container).
+3. HuggingFace cache exists at `~/.cache/huggingface` (mounted to allow offline mode).
+4. The `rakuten2-training` image is built: `docker compose --profile training build training`.
+
+### Known Limitations
+
+- Host paths in `DOCKER_TRAIN_CMD` are hardcoded to `/home/mirco/rakuten2/...` — needs to be parameterized for portability.
+- `chmod 666` on the Docker socket is required after every container restart and is permissive — production would use a dedicated docker group.
+- LocalExecutor only — no parallel training, no remote workers.
+
 ## Architecture
 
 - **Prometheus**: scrapes metrics from the API and Pushgateway every 15 seconds
